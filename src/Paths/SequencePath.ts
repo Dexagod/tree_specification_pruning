@@ -1,10 +1,12 @@
 import Path from './Path'
 import PriorityBoolean from '../Util/PriorityBooolean'
+import * as N3 from 'n3'
+
 export default class SequencePath extends Path {
   value: Path[];
 
-  constructor (value : Path[]) {
-    super(value)
+  constructor (value : Path[], subject? : N3.Term, object?: N3.Term) {
+    super(value, subject, object)
     this.value = value
   }
 

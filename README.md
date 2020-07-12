@@ -24,7 +24,7 @@ let relation = {
 
 let query = {
   'PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> \
-  PREFIX ex: <http://www.example.org/> \
+  PREFIX ex: <http://www.example.org#> \
   SELECT ?s WHERE { \
     ?s <http://examplecom/name> ?name ; \
     Filter(strstarts(str(?name), "Gent-")) \
