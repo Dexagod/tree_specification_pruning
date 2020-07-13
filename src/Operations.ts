@@ -62,161 +62,341 @@ function getResultNumberType (d1 : DataType, d2: DataType) {
   if (d1 === DataType.DECIMAL || d2 === DataType.DECIMAL) return DataType.DECIMAL
 }
 
-function lesserThan (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
-  const operator = '<'
+/**
+ * Lesser Than Operator
+ * @param left : Left VariableBinding
+ * @param right : Right VariableBinding
+ * @param reverseargPrecedence : if we convert a GreaterThan operation to a lesser than operation, the precedence of the args turns around
+ * for example ?s: [10, 50] < ?r: [20, 60] -> returns ?s:[10, 20[ - ?r:[20, 60]
+ * but         ?r: [20, 60] > ?s: [10, 50] -> returns ?s:[10, 50] - r?:[50, 60]
+ * Because of this, we cannot just change signs and argument orders, but we have to assign a reversed precedence operation
+ */
+function lesserThan (left: VariableBinding, right: VariableBinding, reverseargPrecedence = false) : VariableBinding[] | null {
+  const lvar = left.variable
+  const rvar = right.variable
+  const lvr = left.valueRange
+  const rvr = right.valueRange
+  const operator = reverseargPrecedence ? '>' : '<'
+
   checkInequalityArguments(operator, left, right)
-  if (left.variable && !right.variable) {
-    if (!left.valueRange) {
-      if (right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, false))])
-      } else if (right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, false))])
+  if (lvar && !rvar) { // ?s - any, null - any
+    if (!lvr) { // ?s - null, null - |c, d|
+      if (rvr instanceof StringValueRange) {
+        return ([new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, !rvr.startInclusive))])
+      } else if (rvr instanceof NumberValueRange) {
+        return ([new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, !rvr.startInclusive))])
       }
-    } else {
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, false))])
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, false))])
-      }
-    }
-  } else if (right.variable && !left.variable) {
-    if (!right.valueRange) {
-      if (left.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, false, false))])
-      } else if (left.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, false, false))])
-      }
-    } else {
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, false, right.valueRange.endInclusive))])
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), false, right.valueRange.endInclusive))])
-      }
-    }
-  } else { // left.variable && right.variable
-    if (!left.valueRange && !right.valueRange) { // We map the variables on each other (currently no support, but for the future)
+    } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
       return [
-        new VariableBinding(left.variable, new UnknownValueRange(null, right.variable, undefined, false, false)),
-        new VariableBinding(right.variable, new UnknownValueRange(left.variable, null, undefined, false, false))
+        new VariableBinding(lvar, valRanges[0])
       ]
-    } else if (left.valueRange && !right.valueRange) {
-      if (left.valueRange instanceof StringValueRange) {
+    }
+  } else if (rvar && !lvar) { // ?s - any, ?r - any
+    if (!rvr) { // null - |a, b|, ?r - null
+      if (lvr instanceof StringValueRange) {
+        return ([new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, !lvr.endInclusive, false))])
+      } else if (lvr instanceof NumberValueRange) {
+        return ([new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, !lvr.endInclusive, false))])
+      }
+    } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
+      return [
+        new VariableBinding(rvar, valRanges[1])
+      ]
+    }
+  } else { // ?s - any, ?r - any
+    if (!lvr && !rvr) { // ?s - null, ?r - null     =>      We map the variables on each other (currently no support, but for the future)
+      return [
+        new VariableBinding(lvar, new UnknownValueRange(null, rvar, undefined, false, false)),
+        new VariableBinding(rvar, new UnknownValueRange(lvar, null, undefined, false, false))
+      ]
+    } else if (lvr && !rvr) { // ?s - |a, b|, ?r - null
+      if (lvr instanceof StringValueRange) {
         return [
-          new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, left.valueRange.end, DataType.STRING, left.valueRange.startInclusive, left.valueRange.endInclusive)),
-          new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, false, false))
+          new VariableBinding(lvar, new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, !lvr.endInclusive, false))
         ]
-      } else if (left.valueRange instanceof NumberValueRange) {
+      } else if (lvr instanceof NumberValueRange) {
         return [
-          new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, left.valueRange.end, left.valueRange.dataType, left.valueRange.startInclusive, left.valueRange.endInclusive)),
-          new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, false, false))
+          new VariableBinding(lvar, new NumberValueRange(lvr.start, lvr.end, lvr.dataType, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, !lvr.endInclusive, false))
         ]
       }
-    } else if (!left.valueRange && right.valueRange) {
-      if (right.valueRange instanceof StringValueRange) {
+    } else if (!lvr && rvr) { // ?s - null, ?r - |c, d|
+      if (rvr instanceof StringValueRange) {
         return [
-          new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, false)),
-          new VariableBinding(right.variable, new StringValueRange(right.valueRange.start, right.valueRange.end, DataType.STRING, right.valueRange.startInclusive, right.valueRange.endInclusive))
+          new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, !rvr.startInclusive)),
+          new VariableBinding(rvar, new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive))
         ]
-      } else if (right.valueRange instanceof NumberValueRange) {
+      } else if (rvr instanceof NumberValueRange) {
         return [
-          new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, false)),
-          new VariableBinding(right.variable, new NumberValueRange(right.valueRange.start, right.valueRange.end, right.valueRange.dataType, right.valueRange.startInclusive, right.valueRange.endInclusive))
-        ]
-      }
-    } else { // left.valueRange && right.valueRange
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return [
-          new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, false)),
-          new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, false, right.valueRange.endInclusive))
-        ]
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return [
-          new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, false)),
-          new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), false, right.valueRange.endInclusive))
+          new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, !rvr.startInclusive)),
+          new VariableBinding(rvar, new NumberValueRange(rvr.start, rvr.end, rvr.dataType, rvr.startInclusive, rvr.endInclusive))
         ]
       }
+    } else if (lvr && rvr) { // ?s - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
+      return [
+        new VariableBinding(lvar, valRanges[0]),
+        new VariableBinding(rvar, valRanges[1])
+      ]
     }
   }
   return null
 }
 
-function lesserThanEqual (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
-  const operator = '<='
-  checkInequalityArguments(operator, left, right)
-  if (left.variable && !right.variable) {
-    if (!left.valueRange) {
-      if (right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, true))])
-      } else if (right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, true))])
-      }
-    } else {
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, true))])
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, true))])
-      }
-    }
-  } else if (right.variable && !left.variable) {
-    if (!right.valueRange) {
-      if (left.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, true, false))])
-      } else if (left.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, true, false))])
-      }
-    } else {
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, true, right.valueRange.endInclusive))])
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), true, right.valueRange.endInclusive))])
-      }
-    }
-  } else { // left.variable && right.variable
-    if (!left.valueRange && !right.valueRange) { // We map the variables on each other (currently no support, but for the future)
+function combineValRangesLT (lvr: ValueRange, rvr: ValueRange, reversedPrecedence = false, equals = false) : ValueRange[] | null{
+  if (lvr instanceof StringValueRange && rvr instanceof StringValueRange) {
+    if (!lvr.end && !rvr.start) {
       return [
-        new VariableBinding(left.variable, new UnknownValueRange(null, right.variable, undefined, false, true)),
-        new VariableBinding(right.variable, new UnknownValueRange(left.variable, null, undefined, true, false))
+        new StringValueRange(lvr.start, rvr.end, DataType.STRING, lvr.startInclusive, !!equals),
+        new StringValueRange(rvr.start, rvr.end, DataType.STRING, !!equals, rvr.endInclusive)
       ]
-    } else if (left.valueRange && !right.valueRange) {
-      if (left.valueRange instanceof StringValueRange) {
+    } else if (!lvr.end) {
+      return [
+        new StringValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+        new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
+      ]
+    } else if (!rvr.start) {
+      return [
+        new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+        new StringValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+      ]
+    } else {
+      if (lvr.end < rvr.start) {
         return [
-          new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, left.valueRange.end, DataType.STRING, left.valueRange.startInclusive, left.valueRange.endInclusive)),
-          new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, true, false))
+          new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+          new StringValueRange(rvr.start, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
         ]
-      } else if (left.valueRange instanceof NumberValueRange) {
+      } else {
+        if (!reversedPrecedence) {
+          return [
+            new StringValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+            new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
+          ]
+        } else {
+          return [
+            new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+            new StringValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+          ]
+        }
+      }
+    }
+  } else if (lvr instanceof NumberValueRange && rvr instanceof NumberValueRange) {
+    if (!lvr.end && !rvr.start) {
+      return [
+        new NumberValueRange(lvr.start, rvr.end, DataType.STRING, lvr.startInclusive, !!equals),
+        new NumberValueRange(rvr.start, rvr.end, DataType.STRING, !!equals, rvr.endInclusive)
+      ]
+    } else if (!lvr.end) {
+      return [
+        new NumberValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+        new NumberValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
+      ]
+    } else if (!rvr.start) {
+      return [
+        new NumberValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+        new NumberValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+      ]
+    } else {
+      if (lvr.end < rvr.start) {
         return [
-          new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, left.valueRange.end, left.valueRange.dataType, left.valueRange.startInclusive, left.valueRange.endInclusive)),
-          new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, true, false))
+          new NumberValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+          new NumberValueRange(rvr.start, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+        ]
+      } else {
+        if (!reversedPrecedence) {
+          return [
+            new NumberValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+            new NumberValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
+          ]
+        } else {
+          return [
+            new NumberValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
+            new NumberValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+          ]
+        }
+      }
+    }
+  return null
+}
+
+/**
+ * Lesser Than Operator
+ * @param left : Left VariableBinding
+ * @param right : Right VariableBinding
+ * @param reverseargPrecedence : if we convert a GreaterThan operation to a lesser than operation, the precedence of the args turns around
+ * for example ?s: [10, 50] < ?r: [20, 60] -> returns ?s:[10, 20[ - ?r:[20, 60]
+ * but         ?r: [20, 60] > ?s: [10, 50] -> returns ?s:[10, 50] - r?:[50, 60]
+ * Because of this, we cannot just change signs and argument orders, but we have to assign a reversed precedence operation
+ */
+function lesserThanEqual (left: VariableBinding, right: VariableBinding, reverseargPrecedence = false) : VariableBinding[] | null {
+  const lvar = left.variable
+  const rvar = right.variable
+  const lvr = left.valueRange
+  const rvr = right.valueRange
+  const operator = reverseargPrecedence ? '>=' : '<='
+
+  checkInequalityArguments(operator, left, right)
+  if (lvar && !rvar) { // ?s - any, null - any
+    if (!lvr) { // ?s - null, null - |c, d|
+      if (rvr instanceof StringValueRange) {
+        return ([new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, true))])
+      } else if (rvr instanceof NumberValueRange) {
+        return ([new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, true))])
+      }
+    } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
+      return [
+        new VariableBinding(lvar, valRanges[0])
+      ]
+    }
+  } else if (rvar && !lvar) { // ?s - any, ?r - any
+    if (!rvr) { // null - |a, b|, ?r - null
+      if (lvr instanceof StringValueRange) {
+        return ([new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, true, false))])
+      } else if (lvr instanceof NumberValueRange) {
+        return ([new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, true, false))])
+      }
+    } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
+      return [
+        new VariableBinding(rvar, valRanges[1])
+      ]
+    }
+  } else { // ?s - any, ?r - any
+    if (!lvr && !rvr) { // ?s - null, ?r - null     =>      We map the variables on each other (currently no support, but for the future)
+      return [
+        new VariableBinding(lvar, new UnknownValueRange(null, rvar, undefined, false, true)),
+        new VariableBinding(rvar, new UnknownValueRange(lvar, null, undefined, true, false))
+      ]
+    } else if (lvr && !rvr) { // ?s - |a, b|, ?r - null
+      if (lvr instanceof StringValueRange) {
+        return [
+          new VariableBinding(lvar, new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, true, false))
+        ]
+      } else if (lvr instanceof NumberValueRange) {
+        return [
+          new VariableBinding(lvar, new NumberValueRange(lvr.start, lvr.end, lvr.dataType, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, true, false))
         ]
       }
-    } else if (!left.valueRange && right.valueRange) {
-      if (right.valueRange instanceof StringValueRange) {
+    } else if (!lvr && rvr) { // ?s - null, ?r - |c, d|
+      if (rvr instanceof StringValueRange) {
         return [
-          new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, true)),
-          new VariableBinding(right.variable, new StringValueRange(right.valueRange.start, right.valueRange.end, DataType.STRING, right.valueRange.startInclusive, right.valueRange.endInclusive))
+          new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, true)),
+          new VariableBinding(rvar, new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive))
         ]
-      } else if (right.valueRange instanceof NumberValueRange) {
+      } else if (rvr instanceof NumberValueRange) {
         return [
-          new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, true)),
-          new VariableBinding(right.variable, new NumberValueRange(right.valueRange.start, right.valueRange.end, right.valueRange.dataType, right.valueRange.startInclusive, right.valueRange.endInclusive))
-        ]
-      }
-    } else { // left.valueRange && right.valueRange
-      if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
-        return [
-          new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, true)),
-          new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, true, right.valueRange.endInclusive))
-        ]
-      } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
-        return [
-          new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, true)),
-          new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), true, right.valueRange.endInclusive))
+          new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, true)),
+          new VariableBinding(rvar, new NumberValueRange(rvr.start, rvr.end, rvr.dataType, rvr.startInclusive, rvr.endInclusive))
         ]
       }
+    } else if (lvr && rvr) { // ?s - |a, b|, ?r - |c, d|
+      const valRanges = combineValRangesLT(lvr, rvr, reverseargPrecedence)
+      if (!valRanges) return null
+      return [
+        new VariableBinding(lvar, valRanges[0]),
+        new VariableBinding(rvar, valRanges[1])
+      ]
     }
   }
   return null
 }
+
+function greaterThan (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
+  return lesserThan(right, left, true)
+}
+
+function greaterThanEqual (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
+  return lesserThanEqual(right, left, true)
+}
+
+// function lesserThanEqual (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
+//   const operator = '<='
+//   checkInequalityArguments(operator, left, right)
+//   if (left.variable && !right.variable) {
+//     if (!left.valueRange) {
+//       if (right.valueRange instanceof StringValueRange) {
+//         return ([new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, true))])
+//       } else if (right.valueRange instanceof NumberValueRange) {
+//         return ([new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, true))])
+//       }
+//     } else {
+//       if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
+//         return ([new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, true))])
+//       } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
+//         return ([new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, true))])
+//       }
+//     }
+//   } else if (right.variable && !left.variable) {
+//     if (!right.valueRange) {
+//       if (left.valueRange instanceof StringValueRange) {
+//         return ([new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, true, false))])
+//       } else if (left.valueRange instanceof NumberValueRange) {
+//         return ([new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, true, false))])
+//       }
+//     } else {
+//       if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
+//         return ([new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, true, right.valueRange.endInclusive))])
+//       } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
+//         return ([new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), true, right.valueRange.endInclusive))])
+//       }
+//     }
+//   } else { // left.variable && right.variable
+//     if (!left.valueRange && !right.valueRange) { // We map the variables on each other (currently no support, but for the future)
+//       return [
+//         new VariableBinding(left.variable, new UnknownValueRange(null, right.variable, undefined, false, true)),
+//         new VariableBinding(right.variable, new UnknownValueRange(left.variable, null, undefined, true, false))
+//       ]
+//     } else if (left.valueRange && !right.valueRange) {
+//       if (left.valueRange instanceof StringValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, left.valueRange.end, DataType.STRING, left.valueRange.startInclusive, left.valueRange.endInclusive)),
+//           new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, null, DataType.STRING, true, false))
+//         ]
+//       } else if (left.valueRange instanceof NumberValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, left.valueRange.end, left.valueRange.dataType, left.valueRange.startInclusive, left.valueRange.endInclusive)),
+//           new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, null, left.valueRange.dataType, true, false))
+//         ]
+//       }
+//     } else if (!left.valueRange && right.valueRange) {
+//       if (right.valueRange instanceof StringValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new StringValueRange(null, right.valueRange.start, DataType.STRING, false, true)),
+//           new VariableBinding(right.variable, new StringValueRange(right.valueRange.start, right.valueRange.end, DataType.STRING, right.valueRange.startInclusive, right.valueRange.endInclusive))
+//         ]
+//       } else if (right.valueRange instanceof NumberValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new NumberValueRange(null, right.valueRange.start, right.valueRange.dataType, false, true)),
+//           new VariableBinding(right.variable, new NumberValueRange(right.valueRange.start, right.valueRange.end, right.valueRange.dataType, right.valueRange.startInclusive, right.valueRange.endInclusive))
+//         ]
+//       }
+//     } else { // left.valueRange && right.valueRange
+//       if (left.valueRange instanceof StringValueRange && right.valueRange instanceof StringValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new StringValueRange(left.valueRange.start, right.valueRange.start, DataType.STRING, left.valueRange.startInclusive, true)),
+//           new VariableBinding(right.variable, new StringValueRange(left.valueRange.end, right.valueRange.end, DataType.STRING, true, right.valueRange.endInclusive))
+//         ]
+//       } else if (left.valueRange instanceof NumberValueRange && right.valueRange instanceof NumberValueRange) {
+//         return [
+//           new VariableBinding(left.variable, new NumberValueRange(left.valueRange.start, right.valueRange.start, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), left.valueRange.startInclusive, true)),
+//           new VariableBinding(right.variable, new NumberValueRange(left.valueRange.end, right.valueRange.end, getResultNumberType(left.valueRange.dataType, right.valueRange.dataType), true, right.valueRange.endInclusive))
+//         ]
+//       }
+//     }
+//   }
+//   return null
+// }
 
 // function lesserThanEqual (left: VariableBinding, right: VariableBinding) {
 //   if (!left || !right) throw getIncorrectNumberOfOperandsError('<=')
