@@ -2,7 +2,7 @@
 import { expect } from 'chai'
 import 'mocha'
 import { Literal, Variable, NamedNode } from 'rdf-js'
-import { evaluateOperation, bindVariableToTerm } from '../../src/Operations'
+import { evaluateOperation, bindVariableToTerm } from '../../src/Util/Operations'
 import * as N3 from 'n3'
 import ValueRange from '../../src/ValueRanges/ValueRange'
 import UnknownValueRange from '../../src/ValueRanges/UnknownValueRange'
@@ -28,61 +28,61 @@ describe('Testing path matching',
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('test'),
-        new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('test', 'test', DataType.STRING)),
+        new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('test', 'test', DataType.STRING, true, true)),
         'Should cast a variable to a string valuerange when assigned a string literal')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100', N3.DataFactory.namedNode(xsd + 'string')),
-        new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('100', '100', DataType.STRING)),
+        new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('100', '100', DataType.STRING, true, true)),
         'Should cast a variable to a number valuerange when assigned a string literal for a string datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal(100),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100', N3.DataFactory.namedNode(xsd + 'int')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for an int datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100', N3.DataFactory.namedNode(xsd + 'integer')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.INTEGER, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for an integer datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100', N3.DataFactory.namedNode(xsd + 'decimal')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.DECIMAL)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.DECIMAL, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for a decimal datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100', N3.DataFactory.namedNode(xsd + 'float')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.FLOAT)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100, 100, DataType.FLOAT, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for a float datatype without period')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100.01', N3.DataFactory.namedNode(xsd + 'float')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100.01, 100.01, DataType.FLOAT)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100.01, 100.01, DataType.FLOAT, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for a float datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('100.01', N3.DataFactory.namedNode(xsd + 'double')),
-        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100.01, 100.01, DataType.DOUBLE)),
+        new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(100.01, 100.01, DataType.DOUBLE, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for a double datatype')
 
       shouldEvaluateTo(
         N3.DataFactory.variable('s'),
         N3.DataFactory.literal('2002-10-10T12:00:00', N3.DataFactory.namedNode(xsd + 'dateTime')),
-        new VariableBinding(N3.DataFactory.variable('s'), new DateTimeValueRange(new Date('2002-10-10T12:00:00'), new Date('2002-10-10T12:00:00'), DataType.DATETIME)),
+        new VariableBinding(N3.DataFactory.variable('s'), new DateTimeValueRange(new Date('2002-10-10T12:00:00'), new Date('2002-10-10T12:00:00'), DataType.DATETIME, true, true)),
         'Should cast a variable to a number valuerange when assigned a number literal for a dateTime datatype')
     }
 

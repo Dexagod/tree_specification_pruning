@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import 'mocha'
 import { Literal } from 'rdf-js'
 import VariableBinding from '../../src/Bindings/VariableBinding'
-import { evaluateOperation } from '../../src/Operations'
+import { evaluateOperation } from '../../src/Util/Operations'
 import * as N3 from 'n3'
 import UnknownValueRange from '../../src/ValueRanges/UnknownValueRange'
 import StringValueRange from '../../src/ValueRanges/StringValueRange'
@@ -22,8 +22,8 @@ describe('Testing operands',
     }
 
     function getVar (varName: string = 's') { return N3.DataFactory.variable(varName) }
-    function getStringValRange (first:string = 'a', last:string = 'z') { return new StringValueRange(first, last, DataType.STRING) }
-    function getNumberValRange (first:number = 1, last:number = 100) { return new NumberValueRange(first, last, DataType.INTEGER) }
+    function getStringValRange (first:string = 'a', last:string = 'z') { return new StringValueRange(first, last, DataType.STRING, true, true) }
+    function getNumberValRange (first:number = 1, last:number = 100) { return new NumberValueRange(first, last, DataType.INTEGER, true, true) }
     function getEmptyBinding () { return new VariableBinding() }
     function getVariableBinding (varName: string = 's') { return new VariableBinding(getVar(varName)) }
     function getStringValueRangeBinding (first:string = 'a', last:string = 'z') { return new VariableBinding(undefined, getStringValRange(first, last)) }
@@ -37,8 +37,8 @@ describe('Testing operands',
       shouldEvaluateTo('<', getEmptyBinding(), getStringFullBinding(), null, 'An empty binding argument should resolve to null')
       shouldEvaluateTo('<', getNumberFullBinding(), getEmptyBinding(), null, 'An empty binding argument should resolve to null')
 
-      // ?s - null      <     null - ]c,d[       ->   ?s - ]null, a[
-      // ?s - null      <     null - ]11, 20[    ->   ?s - ]null, 11[
+      // ?s - null      <     null - [c,d]       ->   ?s - ]null, c[
+      // ?s - null      <     null - [11, 20]    ->   ?s - ]null, 11[
       shouldEvaluateTo('<', getVariableBinding('s'), getStringValueRangeBinding('c', 'd'),
         [new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange(null, 'c', DataType.STRING, false, false))],
         'A variableBinding and a string value range should resolve to a binding for the variable with an upper bound not inclusive')
@@ -55,22 +55,19 @@ describe('Testing operands',
         [new VariableBinding(N3.DataFactory.variable('t'), new NumberValueRange(10, null, DataType.INTEGER, false, false))],
         'A number value range and a variableBinding should resolve to a binding for the variable with a lower bound not inclusive')
 
-      // ?s - ]a, b[      <     null - ]c, d[     ->   ?s - ]a, b[
-      // ?s - ]1, 10[     <     null - ]11, 20[   ->   ?s - ]1, 10[
       shouldEvaluateTo('<', getStringFullBinding('s', 'a', 'b'), getStringValueRangeBinding('c', 'd'),
-        [new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('a', 'b', DataType.STRING, false, false))],
-        's - ]a, b[      <     null - ]c, d[     ->   ?s - ]a, b[')
+        [new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('a', 'b', DataType.STRING, true, true))],
+        's - [a, b]      <     null - [c, d]     ->   ?s - [a, b]')
       shouldEvaluateTo('<', getNumberFullBinding('s', 1, 10), getNumberValueRangeBinding(11, 20),
-        [new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(1, 10, DataType.INTEGER, false, false))],
-        '?s - ]1, 10[     <     null - ]11, 20[   ->   ?s - ]1, 10[')
-      // ?s - ]a, c[      <     null - ]b, d[     ->   ?s - ]a, b[
-      // ?s - ]1, 11[     <     null - ]10, 20[   ->   ?s - ]1, 10[
+        [new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(1, 10, DataType.INTEGER, true, true))],
+        '?s - [1, 10]     <     null - [11, 20]   ->   ?s - [1, 10]')
+
       shouldEvaluateTo('<', getStringFullBinding('s', 'a', 'c'), getStringValueRangeBinding('b', 'd'),
-        [new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('a', 'b', DataType.STRING, false, false))],
-        '?s - ]a, c[      <     null - ]b, d[     ->   ?s - ]a, b[')
+        [new VariableBinding(N3.DataFactory.variable('s'), new StringValueRange('a', 'b', DataType.STRING, true, false))],
+        '?s - [a, c]      <     null - [b, d]     ->   ?s - [a, b[')
       shouldEvaluateTo('<', getNumberFullBinding('s', 1, 11), getNumberValueRangeBinding(10, 20),
-        [new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(1, 10, DataType.INTEGER, false, false))],
-        '?s - ]1, 11[     <     null - ]10, 20[   ->   ?s - ]1, 10[')
+        [new VariableBinding(N3.DataFactory.variable('s'), new NumberValueRange(1, 10, DataType.INTEGER, true, false))],
+        '?s - [1, 11]     <     null - [10, 20]   ->   ?s - [1, 10[')
 
       // // null - ]a,b[     <   ?t - ]c,d[        ->   ?s - ]z, null[
       // // null - ]1, 10[   <   ?t - ]11,20[      ->   ?s - ]100, null[

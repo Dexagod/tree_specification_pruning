@@ -11,7 +11,7 @@ import { AssertionError, match } from 'assert'
 import { resolve } from 'dns'
 import { NameSpaces } from '../../src/Util/NameSpaces'
 import { Relation } from '../../src/Util/Util'
-import PruningActor from '../../src/PruningActor'
+import { processPatterns } from '../../src/pruning'
 
 const rdf = NameSpaces.RDF
 const shacl = NameSpaces.SHACL
@@ -26,7 +26,7 @@ describe('Testing path matching',
         // Expect the query to match the relation, and return the term at the end of the path
         const relationPath = await Converter.extractRelationPath(relation)
         if (!relationPath) return expect(relationPath).to.be.not.null
-        const patterns = await PruningActor.processQueryParseTree(query, relationPath)
+        const patterns = await processPatterns(query, relationPath, relation)
         // First we extract the available BGPs from the query that were processed
         const bgp : any = patterns?.filter((e : any) => { return e.type === 'bgp' })
         // We expect there to be one such pattern in these tests
@@ -45,7 +45,7 @@ describe('Testing path matching',
         const relationPath = await Converter.extractRelationPath(relation)
         if (!relationPath) return expect(relationPath).to.be.not.null
         // Expect the processing of the parse tree to error, as the paths of the relation and BGP do not match.
-        expect(() => PruningActor.processQueryParseTree(query, relationPath)).to.throw(errorMessage)
+        expect(() => processPatterns(query, relationPath, relation)).to.throw(errorMessage)
       })
     }
 

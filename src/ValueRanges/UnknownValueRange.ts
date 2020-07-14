@@ -9,8 +9,8 @@ export default class UnknownValueRange extends ValueRange {
     super('unknown', dataType)
     this.start = start
     this.end = end
-    this.startInclusive = startInclusive || true
-    this.endInclusive = endInclusive || true
+    this.startInclusive = !!startInclusive
+    this.endInclusive = !!endInclusive
   }
 
   castString () : ValueRange {

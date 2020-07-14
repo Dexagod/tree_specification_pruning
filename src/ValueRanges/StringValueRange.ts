@@ -9,8 +9,8 @@ export default class StringValueRange extends ValueRange {
     super('string', dataType)
     this.start = start
     this.end = end
-    this.startInclusive = startInclusive || true
-    this.endInclusive = endInclusive || true
+    this.startInclusive = !!startInclusive
+    this.endInclusive = !!endInclusive
   }
 
   castString () : ValueRange {

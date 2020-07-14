@@ -15,8 +15,8 @@ import ValueRange from '../../src/ValueRanges/ValueRange'
 import StringValueRange from '../../src/ValueRanges/StringValueRange'
 import { DataType } from '../../src/Util/DataTypes'
 import VariableBinding from '../../src/Bindings/VariableBinding'
-import PruningActor from '../../src/PruningActor'
 import { Relation, defaultContext } from '../../src/Util/Util'
+import { evaluate } from '../../src'
 
 const rdf = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
 const shacl = 'http://www.w3.org/ns/shacl#'
@@ -24,11 +24,11 @@ const tree = 'https://w3id.org/tree#'
 const ex = 'http://www.example.org#'
 const xsd = 'http://www.w3.org/2001/XMLSchema'
 
-describe('Testing tree pruning for queries with filters',
+describe('Testing tree pruning for queries and relations',
   () => {
-    function filterShouldEvaluateTo (relation: Relation, query: string, shouldPrune: boolean, message: string) {
+    function evaluationShouldPrune (relation: Relation, query: string, shouldPrune: boolean, message: string) {
       it(message, async function () {
-        const result = PruningActor.evaluate(query, relation)
+        const result = evaluate(query, relation)
         return expect(result).to.eventually.equal(shouldPrune)
       })
     }
@@ -50,26 +50,26 @@ describe('Testing tree pruning for queries with filters',
       }
       const prefixRelation : Relation = {
         '@context': context,
-        '@type': 'PrefixRelation',
+        '@type': tree + 'PrefixRelation',
         'tree:path': { '@id': 'ex:predicate' },
         'tree:value': 'test',
         'tree:node': 'http://www.example.org#node2'
       }
 
-      filterShouldEvaluateTo(prefixRelation,
+      evaluationShouldPrune(prefixRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:predicate ?o . \
-          FILTER(strstarts(str(?o), "test")) \
+          FILTER(strstarts(?o, "test")) \
         } LIMIT 10',
         false,
         'Prefix relation should not be pruned with matching path')
 
-      filterShouldEvaluateTo(prefixRelation,
+      evaluationShouldPrune(prefixRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:predicate ?o . \
-          FILTER(strstarts(str(?o), "apple")) \
+          FILTER(strstarts(?o, "apple")) \
         } LIMIT 10',
         true,
         'Prefix relation should be pruned with non matching path')

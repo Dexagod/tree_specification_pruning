@@ -2,11 +2,10 @@ import * as SPARQLJS from 'sparqljs'
 import { Expression, OperationExpression, FunctionCallExpression, AggregateExpression, BgpPattern, GroupPattern, Tuple, Term } from 'sparqljs'
 import { Relation } from './Util'
 import VariableBinding from '../Bindings/VariableBinding'
-import { evaluateOperation, bindVariableToTerm } from '../Operations';
+import { evaluateOperation, bindVariableToTerm } from './Operations'
 import * as N3 from 'n3'
 import { Literal } from 'rdf-js'
 import UnknownValueRange from '../ValueRanges/UnknownValueRange'
-
 
 export default class ExpressionEvaluator {
   static evaluateExpression (expression : SPARQLJS.Expression, relation? : Relation) : VariableBinding[] {
@@ -53,7 +52,6 @@ export default class ExpressionEvaluator {
         } else if (N3.Util.isBlankNode(term)) {
           throw new Error('Cannot process blank nodes in filter epxression')
         } else {
-          console.log('expression', JSON.stringify(expression, null, 2))
           var exprString = (expression as any).type + ' expressions' || 'tuples'
           throw new Error(exprString + ' are currently not supported')
         }
