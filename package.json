@@ -1,23 +1,17 @@
 {
-  "name": "tree-spec-pruning",
-  "version": "1.0.0",
+  "name": "tree-specification-pruning",
+  "version": "1.0.1",
   "main": "index.js",
   "license": "MIT",
   "scripts": {
     "test": "mocha -r ts-node/register tests/**/*.test.ts"
   },
   "dependencies": {
-    "@rdfjs/data-model": "^1.1.2",
-    "@types/jsonld": "^1.5.1",
     "@types/n3": "^1.1.5",
     "@types/rdf-js": "^3.0.1",
     "@types/sparqljs": "^2.1.0",
-    "jsonld": "^3.1.1",
     "jsonld-streaming-parser": "^2.0.0",
     "n3": "^1.4.0",
-    "shaclib-ts": "^1.1.6",
-    "sparqlalgebrajs": "^2.2.1",
-    "sparqlee": "^1.3.2",
     "sparqljs": "^3.0.1"
   },
   "devDependencies": {
