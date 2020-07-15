@@ -3,7 +3,7 @@ import * as SPARQLJS from 'sparqljs'
 import * as N3 from 'n3'
 import Path from './Paths/Path'
 import ExpressionEvaluator from './Util/ExpressionEvaluator'
-import { getIdOrValue, Relation, isValidValueRange } from './Util/Util'
+import { getIdOrValue, Relation, isValidValueRange, getNextNonPrefixString } from './Util/Util'
 import { BGPEvaluator } from './Util/BGPEvaluator'
 import Converter from './Util/Converter'
 import ProcessedPattern from './Util/ProcessedPattern'
@@ -93,8 +93,9 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
     switch (relation['@type']) {
       case tree + 'PrefixRelation':
         if (valueRange instanceof StringValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(relation['tree:value']) <= 0 : valueRange.start.localeCompare(relation['tree:value']) < 0)
-          const endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(relation['tree:value']) >= 0 : valueRange.end.localeCompare(relation['tree:value']) > 0)
+          const nextSmallestPrefix = getNextNonPrefixString(relation['tree:value'])
+          const startComparison = !valueRange.start || !nextSmallestPrefix || valueRange.start.localeCompare(nextSmallestPrefix) < 0
+          const endComparison = !valueRange.end || valueRange.end.localeCompare(relation['tree:value'][0]) >= 0
           if (!startComparison || !endComparison) return true
         }
         break
@@ -111,7 +112,7 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'LessOrEqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(relation['tree:value']) <= 0 : valueRange.start.localeCompare(relation['tree:value']) <= 0)
+          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(relation['tree:value']) <= 0 : valueRange.start.localeCompare(relation['tree:value']) < 0)
           if (!startComparison) return true
         } else if (valueRange instanceof NumberValueRange) {
           const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= relation['tree:value'] : valueRange.start < relation['tree:value'])

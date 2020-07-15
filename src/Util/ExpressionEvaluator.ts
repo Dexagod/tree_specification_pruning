@@ -11,11 +11,9 @@ export default class ExpressionEvaluator {
   static evaluateExpression (expression : SPARQLJS.Expression, relation? : Relation) : VariableBinding[] {
     let variableBindings : Array<VariableBinding> = []
     const args : VariableBinding[] = []
-    // console.log('expression', expression)
     switch ((expression as any).type) {
       case 'operation':
         expression = expression as OperationExpression
-        // console.log('~operation', JSON.stringify(expression, null, 2))
         for (const arg of expression.args) {
           for (const binding of this.evaluateExpression(arg)) {
             args.push(binding)
@@ -25,20 +23,12 @@ export default class ExpressionEvaluator {
         break
       case 'functionCall':
         throw new Error('Function call expressions are currently not supported')
-        // console.log('~functionCall', JSON.stringify(expression, null, 2))
-        // break
       case 'aggregate':
         throw new Error('Aggregate expressions are currently not supported')
-        // console.log('~aggregate', JSON.stringify(expression, null, 2))
-        // break
       case 'bgp':
         throw new Error('Aggregate expressions are currently not supported')
-        // console.log('~bgp', JSON.stringify(expression, null, 2))
-        // break
       case 'group':
         throw new Error('Group expressions are currently not supported')
-        // console.log('~group', JSON.stringify(expression, null, 2))
-        // break
       default:
         // Only possibility is Term or Tuple (or undefined / random)
         // We can only process Terms, so for all the rest an error is thrown.
