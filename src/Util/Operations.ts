@@ -9,7 +9,7 @@ import DateTimeValueRange from '../ValueRanges/DateTimeValueRange'
 import NumberValueRange from '../ValueRanges/NumberValueRange'
 import ValueRange from '../ValueRanges/ValueRange'
 import LocationValueRange from '../ValueRanges/LocationValueRange'
-import { getNextNonPrefixString } from './Util';
+import { getNextNonPrefixString } from './Util'
 
 const xsd = NameSpaces.XSD
 
@@ -140,7 +140,7 @@ function getIncorrectNumberOfOperandsError (operand: string) {
   return new Error('Incorrect number of parameters for ' + operand + ' operand.')
 }
 
-function getIncorrectArgumentsError (operand: string, left: VariableBinding, right: VariableBinding) {
+function getIncorrectArgumentsError (operand: string, left: any, right: any) {
   return new Error('Could not process ' + operand + ' operator with arguments: ' + JSON.stringify(left, null, 2) + ' , ' + JSON.stringify(right, null, 2))
 }
 
@@ -167,33 +167,40 @@ function lesserThan (left: VariableBinding, right: VariableBinding, reverseargPr
   const operator = reverseargPrecedence ? '>' : '<'
 
   checkArguments(operator, left, right)
+  let comparison : Function
+  let ValRange : any
+
+  const resultType = getResultType(lvr, rvr, operator)
+
+  if (!lvr && !rvr) {
+    comparison = (left: any, right: any) => { return null } // there can be no comparison
+    ValRange = UnknownValueRange
+  } else if ((!lvr || lvr instanceof StringValueRange) && (!rvr || rvr instanceof StringValueRange)) {
+    comparison = (left: string, right: string) => { return left.localeCompare(right) < 0 }
+    ValRange = StringValueRange
+  } else if ((!lvr || lvr instanceof NumberValueRange) && (!rvr || rvr instanceof NumberValueRange)) {
+    comparison = (left: number, right: number) => { return left < right } // there can be no comparison
+    ValRange = NumberValueRange
+  } else if ((!lvr || lvr instanceof DateTimeValueRange) && (!rvr || rvr instanceof DateTimeValueRange)) {
+    comparison = (left: Date, right: Date) => { return left.getTime() < right.getTime() } // there can be no comparison
+    ValRange = DateTimeValueRange
+  } else { throw getIncorrectArgumentsError(operator, left, right) }
+
   if (lvar && !rvar) { // ?s - any, null - any
-    if (!lvr) { // ?s - null, null - |c, d|
-      if (rvr instanceof StringValueRange) {
-        return ([new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, !rvr.startInclusive))])
-      } else if (rvr instanceof NumberValueRange) {
-        return ([new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, !rvr.startInclusive))])
-      }
+    if (!lvr && rvr) { // ?s - null, null - |c, d|
+      return ([new VariableBinding(lvar, new ValRange(null, rvr.start, resultType, false, !rvr.startInclusive))])
     } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
-      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, false, comparison, ValRange, operator)
       if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
-      return [
-        new VariableBinding(lvar, valRanges[0])
-      ]
+      return [new VariableBinding(lvar, valRanges[0])]
     }
   } else if (rvar && !lvar) { // ?s - any, ?r - any
-    if (!rvr) { // null - |a, b|, ?r - null
-      if (lvr instanceof StringValueRange) {
-        return ([new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, !lvr.endInclusive, false))])
-      } else if (lvr instanceof NumberValueRange) {
-        return ([new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, !lvr.endInclusive, false))])
-      }
+    if (!rvr && lvr) { // null - |a, b|, ?r - null
+      return ([new VariableBinding(rvar, new ValRange(lvr.end, null, resultType, !lvr.endInclusive, false))])
     } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
-      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, false, comparison, ValRange, operator)
       if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
-      return [
-        new VariableBinding(rvar, valRanges[1])
-      ]
+      return [new VariableBinding(rvar, valRanges[1])]
     }
   } else { // ?s - any, ?r - any
     if (!lvr && !rvr) { // ?s - null, ?r - null     =>      We map the variables on each other (currently no support, but for the future)
@@ -202,118 +209,66 @@ function lesserThan (left: VariableBinding, right: VariableBinding, reverseargPr
         new VariableBinding(rvar, new UnknownValueRange(lvar, null, undefined, false, false))
       ]
     } else if (lvr && !rvr) { // ?s - |a, b|, ?r - null
-      if (lvr instanceof StringValueRange) {
-        return [
-          new VariableBinding(lvar, new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive)),
-          new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, !lvr.endInclusive, false))
-        ]
-      } else if (lvr instanceof NumberValueRange) {
-        return [
-          new VariableBinding(lvar, new NumberValueRange(lvr.start, lvr.end, lvr.dataType, lvr.startInclusive, lvr.endInclusive)),
-          new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, !lvr.endInclusive, false))
-        ]
-      }
+      return [
+        new VariableBinding(lvar, new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive)),
+        new VariableBinding(rvar, new ValRange(lvr.end, null, resultType, !lvr.endInclusive, false))
+      ]
     } else if (!lvr && rvr) { // ?s - null, ?r - |c, d|
-      if (rvr instanceof StringValueRange) {
-        return [
-          new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, !rvr.startInclusive)),
-          new VariableBinding(rvar, new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive))
-        ]
-      } else if (rvr instanceof NumberValueRange) {
-        return [
-          new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, !rvr.startInclusive)),
-          new VariableBinding(rvar, new NumberValueRange(rvr.start, rvr.end, rvr.dataType, rvr.startInclusive, rvr.endInclusive))
-        ]
-      }
+      return [
+        new VariableBinding(lvar, new ValRange(null, rvr.start, resultType, false, !rvr.startInclusive)),
+        new VariableBinding(rvar, new ValRange(rvr.start, rvr.end, resultType, rvr.startInclusive, rvr.endInclusive))
+      ]
     } else if (lvr && rvr) { // ?s - |a, b|, ?r - |c, d|
-      if ((lvr instanceof StringValueRange && rvr instanceof StringValueRange) || (lvr instanceof NumberValueRange && rvr instanceof NumberValueRange)) {
-        const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
-        if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
-        return [
-          new VariableBinding(lvar, valRanges[0]),
-          new VariableBinding(rvar, valRanges[1])
-        ]
-      }
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, false, comparison, ValRange, operator)
+      return [
+        new VariableBinding(lvar, valRanges[0]),
+        new VariableBinding(rvar, valRanges[1])
+      ]
     }
   }
   throw getIncorrectArgumentsError(operator, left, right)
 }
 
-function combineValueRangesInequality (lvr: ValueRange, rvr: ValueRange, reversedPrecedence = false, equals = false) : ValueRange[] | null{
-  if (lvr instanceof StringValueRange && rvr instanceof StringValueRange) {
-    if (!lvr.end && !rvr.start) {
+function combineValueRangesInequality (lvr: ValueRange, rvr: ValueRange, reversedPrecedence = false, equals = false, comparison: Function, ValRange: any, operator: string) : ValueRange[] {
+  if (lvr && !(lvr instanceof StringValueRange || lvr instanceof NumberValueRange || lvr instanceof DateTimeValueRange)) throw getIncorrectArgumentsError('', lvr, rvr)
+  if (rvr && !(rvr instanceof StringValueRange || rvr instanceof NumberValueRange || rvr instanceof DateTimeValueRange)) throw getIncorrectArgumentsError('', lvr, rvr)
+  const resultType = getResultType(lvr, rvr, operator)
+
+  if (!lvr.end && !rvr.start) {
+    return [
+      new ValRange(lvr.start, rvr.end, resultType, lvr.startInclusive, !!equals),
+      new ValRange(rvr.start, rvr.end, resultType, !!equals, rvr.endInclusive)
+    ]
+  } else if (!lvr.end) {
+    return [
+      new ValRange(lvr.start, rvr.start, resultType, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+      new ValRange(rvr.start, rvr.end, resultType, rvr.startInclusive, rvr.endInclusive)
+    ]
+  } else if (!rvr.start) {
+    return [
+      new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive),
+      new ValRange(lvr.end, rvr.end, resultType, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+    ]
+  } else {
+    if (comparison(lvr.end, rvr.start)) {
       return [
-        new StringValueRange(lvr.start, rvr.end, DataType.STRING, lvr.startInclusive, !!equals),
-        new StringValueRange(rvr.start, rvr.end, DataType.STRING, !!equals, rvr.endInclusive)
-      ]
-    } else if (!lvr.end) {
-      return [
-        new StringValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
-        new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
-      ]
-    } else if (!rvr.start) {
-      return [
-        new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
-        new StringValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
-      ]
-    } else {
-      if (lvr.end.localeCompare(rvr.start) === -1) {
-        return [
-          new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
-          new StringValueRange(rvr.start, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
-        ]
-      } else {
-        if (!reversedPrecedence) {
-          return [
-            new StringValueRange(lvr.start, rvr.start, DataType.STRING, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
-            new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive)
-          ]
-        } else {
-          return [
-            new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive),
-            new StringValueRange(lvr.end, rvr.end, DataType.STRING, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
-          ]
-        }
-      }
-    }
-  } else if (lvr instanceof NumberValueRange && rvr instanceof NumberValueRange) {
-    if (!lvr.end && !rvr.start) {
-      return [
-        new NumberValueRange(lvr.start, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, !!equals),
-        new NumberValueRange(rvr.start, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), !!equals, rvr.endInclusive)
-      ]
-    } else if (!lvr.end) {
-      return [
-        new NumberValueRange(lvr.start, rvr.start, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
-        new NumberValueRange(rvr.start, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), rvr.startInclusive, rvr.endInclusive)
-      ]
-    } else if (!rvr.start) {
-      return [
-        new NumberValueRange(lvr.start, lvr.end, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, lvr.endInclusive),
-        new NumberValueRange(lvr.end, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+        new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive),
+        new ValRange(rvr.start, rvr.end, resultType, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
       ]
     } else {
-      if (lvr.end < rvr.start) {
+      if (!reversedPrecedence) {
         return [
-          new NumberValueRange(lvr.start, lvr.end, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, lvr.endInclusive),
-          new NumberValueRange(rvr.start, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+          new ValRange(lvr.start, rvr.start, resultType, lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
+          new ValRange(rvr.start, rvr.end, resultType, rvr.startInclusive, rvr.endInclusive)
         ]
       } else {
-        if (!reversedPrecedence) {
-          return [
-            new NumberValueRange(lvr.start, rvr.start, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, equals ? rvr.startInclusive : !rvr.startInclusive),
-            new NumberValueRange(rvr.start, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), rvr.startInclusive, rvr.endInclusive)
-          ]
-        } else {
-          return [
-            new NumberValueRange(lvr.start, lvr.end, getResultNumberType(lvr.dataType, rvr.dataType), lvr.startInclusive, lvr.endInclusive),
-            new NumberValueRange(lvr.end, rvr.end, getResultNumberType(lvr.dataType, rvr.dataType), equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
-          ]
-        }
+        return [
+          new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive),
+          new ValRange(lvr.end, rvr.end, resultType, equals ? lvr.endInclusive : !lvr.endInclusive, rvr.endInclusive)
+        ]
       }
     }
   }
-  return null
 }
 
 /**
@@ -333,29 +288,37 @@ function lesserThanEqual (left: VariableBinding, right: VariableBinding, reverse
   const operator = reverseargPrecedence ? '>=' : '<='
 
   checkArguments(operator, left, right)
+  let comparison : Function
+  let ValRange : any
+  const resultType = getResultType(lvr, rvr, operator)
+
+  if (!lvr && !rvr) {
+    comparison = (left: any, right: any) => { return null } // there can be no comparison
+    ValRange = UnknownValueRange
+  } else if ((!lvr || lvr instanceof StringValueRange) && (!rvr || rvr instanceof StringValueRange)) {
+    comparison = (left: string, right: string) => { return left.localeCompare(right) <= 0 }
+    ValRange = StringValueRange
+  } else if ((!lvr || lvr instanceof NumberValueRange) && (!rvr || rvr instanceof NumberValueRange)) {
+    comparison = (left: number, right: number) => { return left <= right } // there can be no comparison
+    ValRange = NumberValueRange
+  } else if ((!lvr || lvr instanceof DateTimeValueRange) && (!rvr || rvr instanceof DateTimeValueRange)) {
+    comparison = (left: Date, right: Date) => { return left.getTime() <= right.getTime() } // there can be no comparison
+    ValRange = DateTimeValueRange
+  } else { throw getIncorrectArgumentsError(operator, left, right) }
+
   if (lvar && !rvar) { // ?s - any, null - any
-    if (!lvr) { // ?s - null, null - |c, d|
-      if (rvr instanceof StringValueRange) {
-        return ([new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, true))])
-      } else if (rvr instanceof NumberValueRange) {
-        return ([new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, true))])
-      }
+    if (!lvr && rvr) { // ?s - null, null - |c, d|
+      return ([new VariableBinding(lvar, new ValRange(null, rvr.start, resultType, false, true))])
     } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
-      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, true, comparison, ValRange, operator)
       if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
-      return [
-        new VariableBinding(lvar, valRanges[0])
-      ]
+      return [new VariableBinding(lvar, valRanges[0])]
     }
   } else if (rvar && !lvar) { // ?s - any, ?r - any
-    if (!rvr) { // null - |a, b|, ?r - null
-      if (lvr instanceof StringValueRange) {
-        return ([new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, true, false))])
-      } else if (lvr instanceof NumberValueRange) {
-        return ([new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, true, false))])
-      }
+    if (!rvr && lvr) { // null - |a, b|, ?r - null
+      return ([new VariableBinding(rvar, new ValRange(lvr.end, null, resultType, true, false))])
     } else if (lvr && rvr) { // null - |a, b|, ?r - |c, d|
-      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, true, comparison, ValRange, operator)
       if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
       return [
         new VariableBinding(rvar, valRanges[1])
@@ -370,36 +333,34 @@ function lesserThanEqual (left: VariableBinding, right: VariableBinding, reverse
     } else if (lvr && !rvr) { // ?s - |a, b|, ?r - null
       if (lvr instanceof StringValueRange) {
         return [
-          new VariableBinding(lvar, new StringValueRange(lvr.start, lvr.end, DataType.STRING, lvr.startInclusive, lvr.endInclusive)),
-          new VariableBinding(rvar, new StringValueRange(lvr.end, null, DataType.STRING, true, false))
+          new VariableBinding(lvar, new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new ValRange(lvr.end, null, resultType, true, false))
         ]
       } else if (lvr instanceof NumberValueRange) {
         return [
-          new VariableBinding(lvar, new NumberValueRange(lvr.start, lvr.end, lvr.dataType, lvr.startInclusive, lvr.endInclusive)),
-          new VariableBinding(rvar, new NumberValueRange(lvr.end, null, lvr.dataType, true, false))
+          new VariableBinding(lvar, new ValRange(lvr.start, lvr.end, resultType, lvr.startInclusive, lvr.endInclusive)),
+          new VariableBinding(rvar, new ValRange(lvr.end, null, resultType, true, false))
         ]
       }
     } else if (!lvr && rvr) { // ?s - null, ?r - |c, d|
       if (rvr instanceof StringValueRange) {
         return [
-          new VariableBinding(lvar, new StringValueRange(null, rvr.start, DataType.STRING, false, true)),
-          new VariableBinding(rvar, new StringValueRange(rvr.start, rvr.end, DataType.STRING, rvr.startInclusive, rvr.endInclusive))
+          new VariableBinding(lvar, new ValRange(null, rvr.start, resultType, false, true)),
+          new VariableBinding(rvar, new ValRange(rvr.start, rvr.end, resultType, rvr.startInclusive, rvr.endInclusive))
         ]
       } else if (rvr instanceof NumberValueRange) {
         return [
-          new VariableBinding(lvar, new NumberValueRange(null, rvr.start, rvr.dataType, false, true)),
-          new VariableBinding(rvar, new NumberValueRange(rvr.start, rvr.end, rvr.dataType, rvr.startInclusive, rvr.endInclusive))
+          new VariableBinding(lvar, new ValRange(null, rvr.start, resultType, false, true)),
+          new VariableBinding(rvar, new ValRange(rvr.start, rvr.end, resultType, rvr.startInclusive, rvr.endInclusive))
         ]
       }
     } else if (lvr && rvr) { // ?s - |a, b|, ?r - |c, d|
-      if ((lvr instanceof StringValueRange && rvr instanceof StringValueRange) || (lvr instanceof NumberValueRange && rvr instanceof NumberValueRange)) {
-        const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence)
-        if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
-        return [
-          new VariableBinding(lvar, valRanges[0]),
-          new VariableBinding(rvar, valRanges[1])
-        ]
-      }
+      const valRanges = combineValueRangesInequality(lvr, rvr, reverseargPrecedence, true, comparison, ValRange, operator)
+      if (!valRanges) throw getIncorrectArgumentsError(operator, left, right)
+      return [
+        new VariableBinding(lvar, valRanges[0]),
+        new VariableBinding(rvar, valRanges[1])
+      ]
     }
   }
   throw getIncorrectArgumentsError(operator, left, right)
@@ -463,47 +424,48 @@ function equality (left: VariableBinding, right: VariableBinding) : VariableBind
 function valueRangeEqualityCalculation (lvr : ValueRange, rvr: ValueRange) {
   let newStart : any = {}
   let newEnd : any = {}
-  if (lvr instanceof StringValueRange && rvr instanceof StringValueRange) {
-    if (!lvr.start && !rvr.start) {
-      newStart = { value: null, inclusive: false }
-    } else if (!rvr.start) {
-      newStart = { value: lvr.start, inclusive: lvr.startInclusive }
-    } else if (!lvr.start) {
-      newStart = { value: rvr.start, inclusive: rvr.startInclusive }
-    } else {
-      newStart = lvr.start > rvr.start ? { value: lvr.start, inclusive: lvr.startInclusive } : { value: rvr.start, inclusive: rvr.startInclusive }
-    }
-    if (!lvr.end && !rvr.end) {
-      newEnd = { value: null, inclusive: false }
-    } else if (!rvr.end) {
-      newEnd = { value: lvr.end, inclusive: lvr.endInclusive }
-    } else if (!lvr.end) {
-      newEnd = { value: rvr.end, inclusive: rvr.endInclusive }
-    } else {
-      newEnd = lvr.end < rvr.end ? { value: lvr.end, inclusive: lvr.endInclusive } : { value: rvr.end, inclusive: rvr.endInclusive }
-    }
-    return new StringValueRange(newStart.value, newEnd.value, DataType.STRING, newStart.inclusive, newEnd.inclusive)
-  } else if (lvr instanceof NumberValueRange && rvr instanceof NumberValueRange) {
-    if (!lvr.start && !rvr.start) {
-      newStart = { value: null, inclusive: false }
-    } else if (!rvr.start) {
-      newStart = { value: lvr.start, inclusive: lvr.startInclusive }
-    } else if (!lvr.start) {
-      newStart = { value: rvr.start, inclusive: rvr.startInclusive }
-    } else {
-      newStart = lvr.start > rvr.start ? { value: lvr.start, inclusive: lvr.startInclusive } : { value: rvr.start, inclusive: rvr.startInclusive }
-    }
-    if (!lvr.end && !rvr.end) {
-      newEnd = { value: null, inclusive: false }
-    } else if (!rvr.end) {
-      newEnd = { value: lvr.end, inclusive: lvr.endInclusive }
-    } else if (!lvr.end) {
-      newEnd = { value: rvr.end, inclusive: rvr.endInclusive }
-    } else {
-      newEnd = lvr.end < rvr.end ? { value: lvr.end, inclusive: lvr.endInclusive } : { value: rvr.end, inclusive: rvr.endInclusive }
-    }
-    return new NumberValueRange(newStart.value, newEnd.value, getResultNumberType(lvr.dataType, rvr.dataType), newStart.inclusive, newEnd.inclusive)
+
+  let gtcomparison : Function
+  let ltcomparison : Function
+  let ValRange : any
+  const resultType = getResultType(lvr, rvr, '=')
+
+  if (!lvr && !rvr) {
+    gtcomparison = ltcomparison = (left: any, right: any) => { return null } // there can be no comparison
+    ValRange = UnknownValueRange
+  } else if ((!lvr || lvr instanceof StringValueRange) && (!rvr || rvr instanceof StringValueRange)) {
+    gtcomparison = (left: string, right: string) => { return left.localeCompare(right) > 0 }
+    ltcomparison = (left: string, right: string) => { return left.localeCompare(right) < 0 }
+    ValRange = StringValueRange
+  } else if ((!lvr || lvr instanceof NumberValueRange) && (!rvr || rvr instanceof NumberValueRange)) {
+    gtcomparison = (left: number, right: number) => { return left > right }
+    ltcomparison = (left: number, right: number) => { return left < right }
+    ValRange = NumberValueRange
+  } else if ((!lvr || lvr instanceof DateTimeValueRange) && (!rvr || rvr instanceof DateTimeValueRange)) {
+    gtcomparison = (left: Date, right: Date) => { return left.getTime() > right.getTime() }
+    ltcomparison = (left: Date, right: Date) => { return left.getTime() < right.getTime() }
+    ValRange = DateTimeValueRange
+  } else { throw getIncorrectArgumentsError('=', lvr, rvr) }
+
+  if (!lvr.start && !rvr.start) {
+    newStart = { value: null, inclusive: false }
+  } else if (!rvr.start) {
+    newStart = { value: lvr.start, inclusive: lvr.startInclusive }
+  } else if (!lvr.start) {
+    newStart = { value: rvr.start, inclusive: rvr.startInclusive }
+  } else {
+    newStart = gtcomparison(lvr.start, rvr.start) ? { value: lvr.start, inclusive: lvr.startInclusive } : { value: rvr.start, inclusive: rvr.startInclusive }
   }
+  if (!lvr.end && !rvr.end) {
+    newEnd = { value: null, inclusive: false }
+  } else if (!rvr.end) {
+    newEnd = { value: lvr.end, inclusive: lvr.endInclusive }
+  } else if (!lvr.end) {
+    newEnd = { value: rvr.end, inclusive: rvr.endInclusive }
+  } else {
+    newEnd = ltcomparison(lvr.end, rvr.end) ? { value: lvr.end, inclusive: lvr.endInclusive } : { value: rvr.end, inclusive: rvr.endInclusive }
+  }
+  return new ValRange(newStart.value, newEnd.value, resultType, newStart.inclusive, newEnd.inclusive)
 }
 
 export function strstarts (left: VariableBinding, right: VariableBinding) : VariableBinding[] | null {
@@ -546,11 +508,15 @@ function checkArguments (operator: string, left: VariableBinding, right: Variabl
   if (!right.variable && !right.valueRange) throw getIncorrectArgumentsError(operator, left, right)
 }
 
-function getResultNumberType (d1 : DataType, d2: DataType) {
-  if (d1 === DataType.DOUBLE || d2 === DataType.DOUBLE) return DataType.DOUBLE
-  if (d1 === DataType.FLOAT || d2 === DataType.FLOAT) return DataType.FLOAT
-  if (d1 === DataType.INTEGER || d2 === DataType.INTEGER) return DataType.INTEGER
-  if (d1 === DataType.DECIMAL || d2 === DataType.DECIMAL) return DataType.DECIMAL
+function getResultType (d1 : ValueRange | null | undefined, d2: ValueRange | null | undefined, operator = '') {
+  console.log('getting result type', d1 && d1.dataType, d2 && d2.dataType)
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.STRING) && (!d2 || !d2.dataType || d2.dataType === DataType.STRING)) return DataType.STRING
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.DOUBLE) && (!d2 || !d2.dataType || d2.dataType === DataType.DOUBLE)) return DataType.DOUBLE
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.FLOAT) && (!d2 || !d2.dataType || d2.dataType === DataType.FLOAT)) return DataType.FLOAT
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.INTEGER) && (!d2 || !d2.dataType || d2.dataType === DataType.INTEGER)) return DataType.INTEGER
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.DECIMAL) && (!d2 || !d2.dataType || d2.dataType === DataType.DECIMAL)) return DataType.DECIMAL
+  if ((!d1 || !d1.dataType || d1.dataType === DataType.DATETIME) && (!d2 || !d2.dataType || d2.dataType === DataType.DATETIME)) return DataType.DATETIME
+  throw getIncorrectArgumentsError(operator, d1, d2)
 }
 
 function checkLiteral (vr : StringValueRange | NumberValueRange) {

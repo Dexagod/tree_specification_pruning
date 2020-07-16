@@ -13,8 +13,6 @@ import { JsonLdParser } from 'jsonld-streaming-parser'
 import { match } from 'assert'
 import { Relation, getIdOrValue } from './Util'
 
-const { translate } = require('sparqlalgebrajs')
-
 const rdf: string = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
 const tree: string = 'https://w3id.org/tree#'
 const shacl: string = 'http://www.w3.org/ns/shacl#'
