@@ -4,6 +4,7 @@ import { NameSpaces } from './NameSpaces'
 import ValueRange from '../ValueRanges/ValueRange'
 import StringValueRange from '../ValueRanges/StringValueRange'
 import NumberValueRange from '../ValueRanges/NumberValueRange'
+import DateTimeValueRange from '../ValueRanges/DateTimeValueRange'
 
 export function addToMapList (map : Map<any, any>, key: any, value: any) {
   const val = map.get(key)
@@ -29,6 +30,8 @@ export function isValidValueRange (valueRange : ValueRange) {
     return !valueRange.start || !valueRange.end || valueRange.start.localeCompare(valueRange.end) <= 0
   } else if (valueRange instanceof NumberValueRange) {
     return !valueRange.start || !valueRange.end || valueRange.start <= valueRange.end
+  } else if (valueRange instanceof DateTimeValueRange) {
+    return !valueRange.start || !valueRange.end || valueRange.start.getTime() <= valueRange.end.getTime()
   } else {
     return null
   }

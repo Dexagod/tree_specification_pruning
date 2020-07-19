@@ -17,14 +17,15 @@ import { DataType } from '../../src/Util/DataTypes'
 import VariableBinding from '../../src/Bindings/VariableBinding'
 import { Relation, defaultContext } from '../../src/Util/Util'
 import { evaluate } from '../../src'
+import { NameSpaces } from '../../src/Util/NameSpaces';
 
-const rdf = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
-const shacl = 'http://www.w3.org/ns/shacl#'
-const tree = 'https://w3id.org/tree#'
-const ex = 'http://www.example.org#'
-const xsd = 'http://www.w3.org/2001/XMLSchema'
+const rdf = NameSpaces.RDF
+const shacl = NameSpaces.SHACL
+const tree = NameSpaces.TREE
+const ex = NameSpaces.EX
+const xsd = NameSpaces.XSD
 
-describe('Testing tree pruning for queries and relations',
+describe('Testing tree pruning for string queries and relations',
   () => {
     function evaluationShouldPrune (relation: Relation, query: string, shouldPrune: boolean, message: string) {
       it(message, async function () {
@@ -151,7 +152,7 @@ describe('Testing tree pruning for queries and relations',
         false,
         'LessOrEqualThan relation should not be pruned if relation value is greater than the query prefix value and the query value is a prefix of the relation value')
 
-      evaluationShouldPrune(createRelation('GreaterThanRelation', 'tez'),
+      evaluationShouldPrune(createRelation('GreaterThanRelation', 'tezt'),
         createQuery('strstarts(?o, "test")'),
         true,
         'GreaterThanRelation relation should be pruned if relation value is greater than the next possible value of which the quert value is no prefix')
@@ -170,12 +171,12 @@ describe('Testing tree pruning for queries and relations',
         createQuery('strstarts(?o, "testing")'),
         false,
         'GreaterThanRelation relation should not be pruned if query prefix value is greater than the relation value and the query value is a prefix of thre relation value')
-      evaluationShouldPrune(createRelation('GreaterThanRelation', 'zzz'),
+      evaluationShouldPrune(createRelation('GreaterThanRelation', 'zzzz'),
         createQuery('strstarts(?o, "test")'),
         true,
         'GreaterThanRelation relation should be pruned if relation value is greater than the query prefix value')
 
-      evaluationShouldPrune(createRelation('GreaterThanRelation', 'aaa'),
+      evaluationShouldPrune(createRelation('GreaterThanRelation', 'aaaa'),
         createQuery('strstarts(?o, "test")'),
         false,
         'GreaterThanRelation relation should be pruned if relation value is less than the query prefix value')
@@ -195,12 +196,12 @@ describe('Testing tree pruning for queries and relations',
         false,
         'GreaterOrEqualThanRelation relation should not be pruned if query prefix value is greater than the relation value and the query value is a prefix of thre relation value')
 
-      evaluationShouldPrune(createRelation('GreaterOrEqualThanRelation', 'tez'),
+      evaluationShouldPrune(createRelation('GreaterOrEqualThanRelation', 'tezt'),
         createQuery('strstarts(?o, "test")'),
         true,
         'GreaterOrEqualThanRelation relation should not be pruned if relation value is greater than the query prefix value')
 
-      evaluationShouldPrune(createRelation('GreaterOrEqualThanRelation', 'zzz'),
+      evaluationShouldPrune(createRelation('GreaterOrEqualThanRelation', 'zzzz'),
         createQuery('strstarts(?o, "test")'),
         true,
         'GreaterOrEqualThanRelation relation should be pruned if relation value is less than the query prefix value')

@@ -509,7 +509,6 @@ function checkArguments (operator: string, left: VariableBinding, right: Variabl
 }
 
 function getResultType (d1 : ValueRange | null | undefined, d2: ValueRange | null | undefined, operator = '') {
-  console.log('getting result type', d1 && d1.dataType, d2 && d2.dataType)
   if ((!d1 || !d1.dataType || d1.dataType === DataType.STRING) && (!d2 || !d2.dataType || d2.dataType === DataType.STRING)) return DataType.STRING
   if ((!d1 || !d1.dataType || d1.dataType === DataType.DOUBLE) && (!d2 || !d2.dataType || d2.dataType === DataType.DOUBLE)) return DataType.DOUBLE
   if ((!d1 || !d1.dataType || d1.dataType === DataType.FLOAT) && (!d2 || !d2.dataType || d2.dataType === DataType.FLOAT)) return DataType.FLOAT

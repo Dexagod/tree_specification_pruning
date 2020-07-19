@@ -16,6 +16,7 @@ import { NamedNode, Literal } from 'rdf-js'
 import ValueRange from './ValueRanges/ValueRange'
 import NumberValueRange from './ValueRanges/NumberValueRange'
 import { NameSpaces } from './Util/NameSpaces'
+import DateTimeValueRange from './ValueRanges/DateTimeValueRange'
 
 const tree = NameSpaces.TREE
 
@@ -90,71 +91,121 @@ export function canPruneRelationForQuery (query: string, relationPath : Path, re
 function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], relation : Relation) {
   for (const valueRange of resultingValueRanges) {
     if (!isValidValueRange(valueRange)) throw new Error('incorrect value range: ' + valueRange.toString()) // Cannot reason over these relations so cant prune
+    let treeValue
+    if (valueRange instanceof StringValueRange) {
+      treeValue = relation['tree:value'].toString()
+    } else if (valueRange instanceof NumberValueRange) {
+      switch (valueRange.dataType) {
+        case DataType.DECIMAL:
+          treeValue = parseInt(relation['tree:value'])
+          break
+        case DataType.INTEGER:
+          treeValue = parseInt(relation['tree:value'])
+          break
+        case DataType.FLOAT:
+          treeValue = parseFloat(relation['tree:value'])
+          break
+        case DataType.DOUBLE:
+          treeValue = parseFloat(relation['tree:value'])
+          break
+        default:
+          treeValue = parseFloat(relation['tree:value'])
+          break
+      }
+    } else if (valueRange instanceof DateTimeValueRange) {
+      treeValue = new Date(relation['tree:value'])
+    }
+    if (!treeValue) {
+      throw new Error('Could not convert relation type to evaluated query value range data type')
+    }
+
+    let startComparison
+    let endComparison
+
     switch (relation['@type']) {
       case tree + 'PrefixRelation':
         if (valueRange instanceof StringValueRange) {
-          const nextSmallestPrefix = getNextNonPrefixString(relation['tree:value'])
-          const startComparison = !valueRange.start || !nextSmallestPrefix || valueRange.start.localeCompare(nextSmallestPrefix) < 0
-          const endComparison = !valueRange.end || valueRange.end.localeCompare(relation['tree:value'][0]) >= 0
-          if (!startComparison || !endComparison) return true
+          const nextSmallestPrefix = getNextNonPrefixString(treeValue)
+          startComparison = !valueRange.start || !nextSmallestPrefix || valueRange.start.localeCompare(nextSmallestPrefix) < 0
+          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue) >= 0
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!startComparison || !endComparison) return true
         break
 
       case tree + 'LessThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const startComparison = !valueRange.start || valueRange.start.localeCompare(relation['tree:value']) < 0
-          if (!startComparison) return true
+          startComparison = !valueRange.start || valueRange.start.localeCompare(treeValue) < 0
         } else if (valueRange instanceof NumberValueRange) {
-          const startComparison = !valueRange.start || valueRange.start < relation['tree:value']
-          if (!startComparison) return true
+          startComparison = !valueRange.start || valueRange.start < treeValue
+        } else if (valueRange instanceof DateTimeValueRange) {
+          startComparison = !valueRange.start || valueRange.start.getTime() < treeValue.getTime()
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!startComparison) return true
         break
 
       case tree + 'LessOrEqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(relation['tree:value']) <= 0 : valueRange.start.localeCompare(relation['tree:value']) < 0)
-          if (!startComparison) return true
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue) <= 0 : valueRange.start.localeCompare(treeValue) < 0)
         } else if (valueRange instanceof NumberValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= relation['tree:value'] : valueRange.start < relation['tree:value'])
-          if (!startComparison) return true
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= treeValue : valueRange.start < treeValue)
+        } else if (valueRange instanceof DateTimeValueRange) {
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= treeValue.getTime() : valueRange.start.getTime() < treeValue.getTime())
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!startComparison) return true
         break
 
       case tree + 'GreaterThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const endComparison = !valueRange.end || valueRange.end.localeCompare(relation['tree:value']) > 0
-          if (!endComparison) return true
+          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue) > 0
         } else if (valueRange instanceof NumberValueRange) {
-          const endComparison = !valueRange.end || valueRange.end > relation['tree:value']
-          if (!endComparison) return true
+          endComparison = !valueRange.end || valueRange.end > treeValue
+        } else if (valueRange instanceof DateTimeValueRange) {
+          endComparison = !valueRange.end || valueRange.end.getTime() > treeValue.getTime()
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!endComparison) return true
         break
 
       case tree + 'GreaterOrEqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(relation['tree:value']) >= 0 : valueRange.end.localeCompare(relation['tree:value']) > 0)
-          if (!endComparison) return true
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue) >= 0 : valueRange.end.localeCompare(treeValue) > 0)
         } else if (valueRange instanceof NumberValueRange) {
-          const endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= relation['tree:value'] : valueRange.end > relation['tree:value'])
-          if (!endComparison) return true
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= treeValue : valueRange.end > treeValue)
+        } else if (valueRange instanceof DateTimeValueRange) {
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= treeValue.getTime() : valueRange.end.getTime() > treeValue.getTime())
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!endComparison) return true
         break
 
       case tree + 'EqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(relation['tree:value']) <= 0 : valueRange.start.localeCompare(relation['tree:value']) < 0)
-          const endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(relation['tree:value']) >= 0 : valueRange.end.localeCompare(relation['tree:value']) > 0)
-          if (!startComparison || !endComparison) return true
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue) <= 0 : valueRange.start.localeCompare(treeValue) < 0)
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue) >= 0 : valueRange.end.localeCompare(treeValue) > 0)
         } else if (valueRange instanceof NumberValueRange) {
-          const startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= relation['tree:value'] : valueRange.start < relation['tree:value'])
-          const endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= relation['tree:value'] : valueRange.end > relation['tree:value'])
-          if (!startComparison || !endComparison) return true
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= treeValue : valueRange.start < treeValue)
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= treeValue : valueRange.end > treeValue)
+        } else if (valueRange instanceof DateTimeValueRange) {
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= treeValue.getTime() : valueRange.start.getTime() < treeValue.getTime())
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= treeValue.getTime() : valueRange.end.getTime() > treeValue.getTime())
+        } else {
+          throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
+        if (!startComparison || !endComparison) return true
         break
 
       default:
-        return false
+        throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
     }
+    return false
   }
   return false
 }
