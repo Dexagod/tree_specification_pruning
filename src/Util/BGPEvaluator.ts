@@ -202,8 +202,7 @@ export class BGPEvaluator {
         case '*':
           return 'zeroOrMorePath'
         case '!':
-          console.error("'!' operator is not yet supported for tree path tracing")
-          return 'predicatePath'
+          throw new Error("'!' operator is not yet supported for tree path tracing")
       }
     } else {
       return 'predicatePath'

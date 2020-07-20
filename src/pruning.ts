@@ -28,7 +28,7 @@ export async function evaluate (query: string, relation: Relation) : Promise<boo
     // Secondly evaluate if we can prune the relation based on the extracted path and relation type and value
     return canPruneRelationForQuery(query, relationPath, relation)
   } catch (e) {
-    console.error(e)
+    // console.error(e)
     return false
   }
 }
