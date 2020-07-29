@@ -27,7 +27,6 @@ describe('Testing path matching',
         const jsonquery = sparqlJSON as SPARQLJS.Query
 
         // We currently only support pruning for select queries with a where clause
-        if (jsonquery.queryType !== 'SELECT') { return null }
         if (!jsonquery.where) return null
 
         const patterns = []

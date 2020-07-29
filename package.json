@@ -1,10 +1,12 @@
 {
   "name": "tree-specification-pruning",
-  "version": "1.0.1",
-  "main": "index.js",
+  "version": "1.0.3",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "test": "mocha -r ts-node/register tests/**/*.test.ts"
+    "test": "mocha -r ts-node/register tests/**/*.test.ts",
+    "prepublish": "rm -r dist/; tsc"
   },
   "dependencies": {
     "@types/n3": "^1.1.5",

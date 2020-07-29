@@ -211,12 +211,12 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 }
 
 export function processPatterns (query: string, relationPath : Path, relation: Relation) {
-  // translate the string query into json format
+  // translate the string query into json format\
   const sparqlJSON = new SPARQLJS.Parser().parse(query)
   const jsonquery = sparqlJSON as SPARQLJS.Query
 
   // We currently only support pruning for select queries with a where clause
-  if (jsonquery.queryType !== 'SELECT') { return [] }
+  if (jsonquery.queryType !== 'SELECT' && jsonquery.queryType !== 'CONSTRUCT') { return [] }
   if (!jsonquery.where) return []
 
   const evaluatedPatterns : ProcessedPattern[] = []
