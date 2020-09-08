@@ -30,7 +30,6 @@ describe('Testing tree pruning for relations without path parameter',
     function evaluationShouldPrune (relation: Relation, query: string, shouldPrune: boolean, message: string) {
       it(message, async function () {
         const result = evaluate(query, relation)
-        console.log('evaluating', query, relation, result)
         return expect(result).to.eventually.equal(shouldPrune)
       })
     }

@@ -49,7 +49,7 @@ export function canPruneRelationForQuery (query: string, relation: Relation) : b
 
 function matchRelationValueWithPathMatchingValueRanges (query: string, relation: Relation): boolean {
   let patterns
-  try { patterns = processPatterns(query, relation) } catch (error) { console.log(error); throw new Error('Query could not be parsed correctly') }
+  try { patterns = processPatterns(query, relation) } catch (error) { throw new Error('Query could not be parsed correctly') }
   if (!patterns || patterns.length === 0) return false
 
   let bgpMatches: N3.Term[] = []
@@ -101,7 +101,6 @@ function matchRelationValueWithPathMatchingValueRanges (query: string, relation:
  * returns FALSE if relation DOES NOT CONTAIN USEFUL INFORMATION
  */
 function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], relation : Relation) {
-  // console.log('canPruneRelationForValueRanges', resultingValueRanges, relation)
   for (const valueRange of resultingValueRanges) {
     if (!isValidValueRange(valueRange)) throw new Error('incorrect value range: ' + valueRange.toString()) // Cannot reason over these relations so cant prune
     let treeValue
