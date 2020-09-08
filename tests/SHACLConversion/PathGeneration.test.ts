@@ -40,7 +40,7 @@ describe('Testing path generation',
         '@context': testContext,
         '@type': 'tree:PrefixRelation',
         'tree:path': path,
-        'tree:value': 'test',
+        'tree:value': N3.DataFactory.literal('test'),
         'tree:node': 'ex:Node2.jsonld'
       }
     }

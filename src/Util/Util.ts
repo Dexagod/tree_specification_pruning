@@ -5,6 +5,9 @@ import ValueRange from '../ValueRanges/ValueRange'
 import StringValueRange from '../ValueRanges/StringValueRange'
 import NumberValueRange from '../ValueRanges/NumberValueRange'
 import DateTimeValueRange from '../ValueRanges/DateTimeValueRange'
+import PredicatePath from '../Paths/PredicatePath'
+import { Literal } from 'rdf-js'
+import UnknownValueRange from '../ValueRanges/UnknownValueRange'
 
 export function addToMapList (map : Map<any, any>, key: any, value: any) {
   const val = map.get(key)
@@ -37,14 +40,19 @@ export function isValidValueRange (valueRange : ValueRange) {
   }
 }
 
-export interface FoundPath {path: Path[], pathEnd: N3.Term}
+export function checkLiteral (vr : StringValueRange | NumberValueRange | DateTimeValueRange | UnknownValueRange) {
+  return vr.start && vr.end && vr.start === vr.end && vr.startInclusive && vr.endInclusive
+}
+
+export interface FoundPath {paths: PredicatePath[], pathEnd: N3.Term, }
 
 export interface Relation{
   '@context': string | object,
   '@type': string,
-  'tree:path': any,
-  'tree:value': any,
-  'tree:node': string
+  'tree:path'?: any,
+  'tree:value': Literal,
+  'tree:node': string,
+  processedPath?: Path;
 }
 
 export const defaultContext = {

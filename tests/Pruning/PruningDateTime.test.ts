@@ -17,7 +17,7 @@ import { DataType } from '../../src/Util/DataTypes'
 import VariableBinding from '../../src/Bindings/VariableBinding'
 import { Relation, defaultContext } from '../../src/Util/Util'
 import { evaluate } from '../../src'
-import { NameSpaces } from '../../src/Util/NameSpaces';
+import { NameSpaces } from '../../src/Util/NameSpaces'
 
 const rdf = NameSpaces.RDF
 const shacl = NameSpaces.SHACL
@@ -43,8 +43,13 @@ describe('Testing tree pruning for datetime queries and relations',
   () => {
     function evaluationShouldPrune (relation: Relation, query: string, shouldPrune: boolean, message: string) {
       it(message, async function () {
-        const result = evaluate(query, relation)
-        return expect(result).to.eventually.equal(shouldPrune)
+        try {
+          const result = evaluate(query, relation)
+          return expect(result).to.eventually.equal(shouldPrune)
+        } catch (e) {
+          console.error(e)
+          expect(e).to.equal(null)
+        }
       })
     }
 
@@ -68,7 +73,7 @@ describe('Testing tree pruning for datetime queries and relations',
         '@context': context,
         '@type': tree + type,
         'tree:path': { '@id': 'ex:predicate' },
-        'tree:value': value,
+        'tree:value': N3.DataFactory.literal(value, N3.DataFactory.namedNode(NameSpaces.XSD + 'dateTime')),
         'tree:node': 'http://www.example.org#node2'
       }
     }

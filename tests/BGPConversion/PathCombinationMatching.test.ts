@@ -23,7 +23,7 @@ const MATCHINGERROR = 'No matching path was found for the given query'
 
 describe('Testing path matching',
   () => {
-    async function QueryShouldEvaluateTo (relation : Relation, query: string, terms: N3.Term[], message: string) {
+    async function QueryShouldEvaluateTo (relation : Relation, query: string, term: N3.Term | null, message: string, numMatches = 1) {
       it(message, async function () {
         // Expect the query to match the relation, and return the term at the end of the path
         const relationPath = await Converter.extractRelationPath(relation)
@@ -36,11 +36,10 @@ describe('Testing path matching',
         await expect(bgp).to.be.not.null
         await expect(bgp).to.not.be.undefined
         expect(bgp.length).to.equal(1)
-        // We expect this pattern to match with the relation and result in the given terms
-        expect(bgp[0].matches.length).to.equal(terms.length)
-        for (let i = 0; i < terms.length; i++) {
-          expect(bgp[0].matches[i]).to.deep.equal(terms[i])
-        }
+        // We expect this pattern to match only for a single term
+        expect(bgp[0].matches.length).to.equal(numMatches)
+        // We expect this pattern to match a specific given term
+        expect(bgp[0].matches[0]).to.deep.equal(term)
       })
     }
 
@@ -112,22 +111,15 @@ describe('Testing path matching',
         'SELECT ?s ?o WHERE { \
           ?s <http://www.example.org#predicate> ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
+        N3.DataFactory.variable('o'),
         'should be able to match path if relation predicate path equals query predicate path')
-
-      QueryShouldErrorWith(predicateRelation,
-        'SELECT ?s ?o WHERE { \
-          ?s <http://www.example.org#predicate1> ?o . \
-        } LIMIT 10',
-        MATCHINGERROR,
-        'should not be able to match path if relation predicate path does not equal query predicate path')
 
       QueryShouldEvaluateTo(predicateRelation,
         'SELECT ?s ?o WHERE { \
           ?s <http://www.example.org#predicate1> ?temp . \
           ?temp <http://www.example.org#predicate> ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
+        N3.DataFactory.variable('o'),
         'should be able to match path if relation predicate path equals part of query predicate path 1')
 
       QueryShouldEvaluateTo(predicateRelation,
@@ -135,15 +127,23 @@ describe('Testing path matching',
           ?s <http://www.example.org#predicate> ?temp . \
           ?temp <http://www.example.org#predicate1> ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('temp')],
+        N3.DataFactory.variable('temp'),
         'should be able to match path if relation predicate path equals part of query predicate path 2')
+
+      QueryShouldErrorWith(predicateRelation,
+        'SELECT ?s ?o WHERE { \
+          ?s <http://www.example.org#predicate1> ?temp . \
+          ?temp <http://www.example.org#predicate2> ?o . \
+        } LIMIT 10',
+        MATCHINGERROR,
+        'should not be able to match path if relation predicate path does not equal query predicate path')
 
       QueryShouldEvaluateTo(sequenceRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:first / ex:second / ex:third ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
+        N3.DataFactory.variable('o'),
         'should be able to match path if relation sequence path equals query sequence path')
 
       QueryShouldEvaluateTo(sequenceRelation,
@@ -152,7 +152,7 @@ describe('Testing path matching',
           ?s ex:first / ex:second ?temp .\
           ?temp ex:third ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
+        N3.DataFactory.variable('o'),
         'should be able to match path if relation sequence path equals query sequence path + predicate path')
 
       QueryShouldEvaluateTo(sequenceRelation,
@@ -162,7 +162,7 @@ describe('Testing path matching',
           ?temp1 ex:second ?temp2 .\
           ?temp2 ex:third ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
+        N3.DataFactory.variable('o'),
         'should be able to match path if relation sequence path equals sequence of query predicate paths')
 
       QueryShouldErrorWith(sequenceRelation,
@@ -179,89 +179,117 @@ describe('Testing path matching',
           ?s ex:first / ex:second ?o . \
         } LIMIT 10',
         MATCHINGERROR,
-        'should not be able to match path if relation sequence path is a superset of query sequence paths')
+        'should not be able to match path if relation sequence path has a different end from query sequence paths')
 
       QueryShouldEvaluateTo(sequenceRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:start / ex:first / ex:second / ex:third ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o')],
-        'should be able to match path if relation sequence path has same end as query sequence paths 1')
-
-      QueryShouldEvaluateTo(sequenceRelation,
-        'PREFIX ex: <http://www.example.org#> \
-        SELECT ?s ?o WHERE { \
-          ?s ex:start ?temp . \
-          ?temp ex:first / ex:second / ex:third ?o . \
-        } LIMIT 10',
-        [N3.DataFactory.variable('o')],
-        'should be able to match path if relation sequence path has same end as query sequence paths 2')
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation path and query path end in the same sequence of path values')
 
       QueryShouldErrorWith(sequenceRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
-          ?s ex:first / ex:second / ex:third /ex:fourth ?o . \
+          ?s ex:start ?temp . \
+          ?temp ex:second / ex:third ?o . \
         } LIMIT 10',
         MATCHINGERROR,
-        'should evaluate to false if machting path stops in a blank node')
+        'should not be able to match path if relation sequence path does not fully match query sequence paths')
+
+      QueryShouldErrorWith(sequenceRelation,
+        'PREFIX ex: <http://www.example.org#> \
+        SELECT ?s ?o WHERE { \
+          ?s ex:first / ex:second / ex:third / ex:fourth ?o . \
+        } LIMIT 10',
+        MATCHINGERROR,
+        'should error if matching path ends in blank node')
 
       QueryShouldEvaluateTo(sequenceRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
-          ?s ex:first / ex:second / ex:third "test" . \
-          ?s ex:fourth ?temp . \
+          ?s ex:first / ex:second / ex:third ?temp . \
+          ?temp ex:fourth ?o . \
         } LIMIT 10',
-        [N3.DataFactory.literal('test')],
-        'should evaluate if relation path matches subset of query and ends in a literal')
+        N3.DataFactory.variable('temp'),
+        'should be able to match path if relation sequence path has different end than query sequence paths 2')
 
       QueryShouldEvaluateTo(alternativeRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:first | ex:second | ex:third ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o'), N3.DataFactory.variable('o'), N3.DataFactory.variable('o')],
-        'should be able to match path if relation altenative path equals query alternative path')
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation altenative path equals query alternative path',
+        3)
 
       QueryShouldEvaluateTo(alternativeRelation,
         'PREFIX ex: <http://www.example.org#> \
           SELECT ?s ?o WHERE { \
-            ?s ex:fourth | ex:second | ex:first | ex:sixth ?o . \
+            ?s ex:first | ex:second | ex:third ?o . \
           } LIMIT 10',
-        [N3.DataFactory.variable('o'), N3.DataFactory.variable('o')],
-        'should be able to match path if relation altenative path has some of the same options in different order to query alternative path')
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation altenative path has same options in different order to query alternative path',
+        3)
+
+      QueryShouldEvaluateTo(alternativeRelation,
+        'PREFIX ex: <http://www.example.org#> \
+          SELECT ?s ?o WHERE { \
+            ?s ex:second | ex:first | ex:fourth ?o . \
+          } LIMIT 10',
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation altenative path has some of the same options in different order to query alternative path',
+        2)
 
       QueryShouldEvaluateTo(alternativeRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
           ?s ex:first | ex:second | ex:third | ex:fourth ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o'), N3.DataFactory.variable('o'), N3.DataFactory.variable('o')],
-        'should be able to match path if relation altenative path has more options than query alternative path')
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation altenative path has more options than the query alternative path',
+        3)
 
       QueryShouldEvaluateTo(alternativeRelation,
         'PREFIX ex: <http://www.example.org#> \
         SELECT ?s ?o WHERE { \
-          ?s ex:first | ex:fourth | ex:second ?o . \
-          ?s ex:fifth | ex:third ?temp . \
+          ?s ex:first | ex:second ?o . \
         } LIMIT 10',
-        [N3.DataFactory.variable('o'), N3.DataFactory.variable('o'), N3.DataFactory.variable('temp')],
-        'should not be able to match path if relation altenative path has less options than query alternative path')
+        N3.DataFactory.variable('o'),
+        'should be able to match path if relation altenative path has less options than the query alternative path',
+        2)
 
       // SHould result in literals
       QueryShouldEvaluateTo(predicateRelation,
         'SELECT ?s ?o WHERE { \
           ?s <http://www.example.org#predicate> "StringLiteral" . \
         } LIMIT 10',
-        [N3.DataFactory.literal('StringLiteral', N3.DataFactory.namedNode(xsd + 'string'))],
+        N3.DataFactory.literal('StringLiteral', N3.DataFactory.namedNode(xsd + 'string')),
         'should be able to match path if relation predicate path equals query predicate path')
 
       QueryShouldEvaluateTo(predicateRelation,
         'SELECT ?s ?o WHERE { \
           ?s <http://www.example.org#predicate> "StringLiteral"^^<' + xsd + 'string> . \
         } LIMIT 10',
-        [N3.DataFactory.literal('StringLiteral', N3.DataFactory.namedNode(xsd + 'string'))],
+        N3.DataFactory.literal('StringLiteral', N3.DataFactory.namedNode(xsd + 'string')),
         'should be able to match path if relation predicate path equals query predicate path')
+
+      QueryShouldErrorWith(sequenceRelation,
+        'PREFIX ex: <http://www.example.org#> \
+        SELECT ?s ?0 WHERE { \
+          ?s ex:fifth | ex:sixth ?o . \
+        } LIMIT 10',
+        MATCHINGERROR,
+        'should not be able to match path if relation sequence path has no path in common with query alternate path')
+
+      QueryShouldErrorWith(sequenceRelation,
+        'PREFIX ex: <http://www.example.org#> \
+        SELECT ?s ?0 WHERE { \
+          ?s ex:first / ex:second ?o . \
+        } LIMIT 10',
+        MATCHINGERROR,
+        'should not be able to match path if relation sequence path is a superset of query sequence paths')
     }
     test()
   })

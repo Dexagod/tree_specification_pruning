@@ -17,7 +17,7 @@ import { DataType } from '../../src/Util/DataTypes'
 import VariableBinding from '../../src/Bindings/VariableBinding'
 import { Relation, defaultContext } from '../../src/Util/Util'
 import { evaluate } from '../../src'
-import { NameSpaces } from '../../src/Util/NameSpaces';
+import { NameSpaces } from '../../src/Util/NameSpaces'
 
 const rdf = NameSpaces.RDF
 const shacl = NameSpaces.SHACL
@@ -49,12 +49,12 @@ describe('Testing tree pruning for CONSTRUCT string queries and relations',
       xsd: xsd
     }
 
-    function createRelation (type: string, value: string | number) : Relation {
+    function createRelation (type: string, value: string) : Relation {
       return {
         '@context': context,
         '@type': tree + type,
         'tree:path': { '@id': 'ex:predicate' },
-        'tree:value': value,
+        'tree:value': N3.DataFactory.literal(value),
         'tree:node': 'http://www.example.org#node2'
       }
     }

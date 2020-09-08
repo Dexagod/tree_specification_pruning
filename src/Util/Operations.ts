@@ -9,7 +9,7 @@ import DateTimeValueRange from '../ValueRanges/DateTimeValueRange'
 import NumberValueRange from '../ValueRanges/NumberValueRange'
 import ValueRange from '../ValueRanges/ValueRange'
 import LocationValueRange from '../ValueRanges/LocationValueRange'
-import { getNextNonPrefixString } from './Util'
+import { getNextNonPrefixString, checkLiteral } from './Util';
 
 const xsd = NameSpaces.XSD
 
@@ -518,40 +518,41 @@ function getResultType (d1 : ValueRange | null | undefined, d2: ValueRange | nul
   throw getIncorrectArgumentsError(operator, d1, d2)
 }
 
-function checkLiteral (vr : StringValueRange | NumberValueRange) {
-  return vr.start && vr.end && vr.start === vr.end && vr.startInclusive && vr.endInclusive
-}
-
 /**
  * Bind a valueRange to a variable based on a given term. Both the start and end of the range are identical in this case, as we have a single value
  * @param variable The variable to bind the term to
  * @param term The literal or namednode to bind
  */
-export function bindVariableToTerm (variable : Variable | undefined, term: Literal | NamedNode) : VariableBinding {
-  if (term.termType === 'NamedNode') { // Handle IRIs as string variables for sake of simplicity
-    return new VariableBinding(variable, new StringValueRange(term.value, term.value))
-  }
-  if (!term.datatype) { // In case of simple literals
-    return new VariableBinding(variable, new UnknownValueRange(term.value, term.value))
-  }
-  switch (term.datatype.value) {
-    case xsd + 'string':
-      return new VariableBinding(variable, new StringValueRange(term.value, term.value, DataType.STRING, true, true))
-    case xsd + 'decimal':
-      return new VariableBinding(variable, new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.DECIMAL, true, true))
-    case xsd + 'integer':
-      return new VariableBinding(variable, new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.INTEGER, true, true))
-    case xsd + 'int': // For the sake of simplicity we currently handle this as if it were integer
-      return new VariableBinding(variable, new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.INTEGER, true, true))
-    case xsd + 'float':
-      return new VariableBinding(variable, new NumberValueRange(parseFloat(term.value), parseFloat(term.value), DataType.FLOAT, true, true))
-    case xsd + 'double':
-      return new VariableBinding(variable, new NumberValueRange(parseFloat(term.value), parseFloat(term.value), DataType.DOUBLE, true, true))
-    case xsd + 'dateTime':
-      return new VariableBinding(variable, new DateTimeValueRange(new Date(term.value), new Date(term.value), DataType.DATETIME, true, true))
-    case xsd + 'boolean': // Booleans are currently not implemented for tree pruning purposes
-      return new VariableBinding(variable, new UnknownValueRange(term.value, term.value, DataType.BOOLEAN))
-    default:
-      return new VariableBinding(variable, new UnknownValueRange(term.value, term.value))
+export function bindVariableToTerm (variable?: Variable | undefined, term?: Literal | NamedNode) : VariableBinding {
+  return new VariableBinding(variable, term && getValueRangeForTerm(term))
+}
+
+export function getValueRangeForTerm (term: Literal | NamedNode) {
+  if (term.termType === 'NamedNode') {
+    return new StringValueRange(term.value, term.value)
+  } else { // term is Literal
+    if (!term.datatype) { // In case of simple literals
+      return new UnknownValueRange(term.value, term.value)
+    }
+    switch (term.datatype.value) {
+      case xsd + 'string':
+        return new StringValueRange(term.value, term.value, DataType.STRING, true, true)
+      case xsd + 'decimal':
+        return new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.DECIMAL, true, true)
+      case xsd + 'integer':
+        return new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.INTEGER, true, true)
+      case xsd + 'int': // For the sake of simplicity we currently handle this as if it were integer
+        return new NumberValueRange(parseInt(term.value), parseInt(term.value), DataType.INTEGER, true, true)
+      case xsd + 'float':
+        return new NumberValueRange(parseFloat(term.value), parseFloat(term.value), DataType.FLOAT, true, true)
+      case xsd + 'double':
+        return new NumberValueRange(parseFloat(term.value), parseFloat(term.value), DataType.DOUBLE, true, true)
+      case xsd + 'dateTime':
+        return new DateTimeValueRange(new Date(term.value), new Date(term.value), DataType.DATETIME, true, true)
+      case xsd + 'boolean': // Booleans are currently not implemented for tree pruning purposes
+        return new UnknownValueRange(term.value, term.value, DataType.BOOLEAN)
+      default:
+        return new UnknownValueRange(term.value, term.value)
+    }
   }
 }

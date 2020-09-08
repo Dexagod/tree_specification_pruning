@@ -64,7 +64,7 @@ describe('Testing tree pruning for number queries and relations',
         '@context': context,
         '@type': tree + type,
         'tree:path': { '@id': 'ex:predicate' },
-        'tree:value': value,
+        'tree:value': N3.DataFactory.literal(value, N3.DataFactory.namedNode(NameSpaces.XSD + 'integer')),
         'tree:node': 'http://www.example.org#node2'
       }
     }

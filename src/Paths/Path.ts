@@ -1,4 +1,3 @@
-import PriorityBoolean from '../Util/PriorityBooolean'
 import * as N3 from 'n3'
 
 export default abstract class Path {
@@ -12,6 +11,4 @@ export default abstract class Path {
   }
 
   abstract getPathString() : string;
-
-  abstract matches(path : Path) : PriorityBoolean;
 }

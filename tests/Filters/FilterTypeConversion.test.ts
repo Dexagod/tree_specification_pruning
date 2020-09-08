@@ -62,7 +62,7 @@ describe('Testing path matching',
         '@context': context,
         '@type': 'PrefixRelation',
         'tree:path': { '@id': 'ex:predicate' },
-        'tree:value': 'Test',
+        'tree:value': N3.DataFactory.literal('Test'),
         'tree:node': 'http://www.example.org#node2'
       }
 

@@ -3,7 +3,7 @@ import * as SPARQLJS from 'sparqljs'
 import * as N3 from 'n3'
 import Path from './Paths/Path'
 import ExpressionEvaluator from './Util/ExpressionEvaluator'
-import { getIdOrValue, Relation, isValidValueRange, getNextNonPrefixString } from './Util/Util'
+import { getIdOrValue, Relation, isValidValueRange, getNextNonPrefixString, FoundPath, checkLiteral } from './Util/Util'
 import { BGPEvaluator } from './Util/BGPEvaluator'
 import Converter from './Util/Converter'
 import ProcessedPattern from './Util/ProcessedPattern'
@@ -17,8 +17,10 @@ import ValueRange from './ValueRanges/ValueRange'
 import NumberValueRange from './ValueRanges/NumberValueRange'
 import { NameSpaces } from './Util/NameSpaces'
 import DateTimeValueRange from './ValueRanges/DateTimeValueRange'
+import UnknownValueRange from './ValueRanges/UnknownValueRange'
 
 const tree = NameSpaces.TREE
+const MATCHERRORSTRING = 'No matching path was found for the given query'
 
 export async function evaluate (query: string, relation: Relation) : Promise<boolean> {
   try {
@@ -26,21 +28,32 @@ export async function evaluate (query: string, relation: Relation) : Promise<boo
     const relationPath = await Converter.extractRelationPath(relation)
     if (!relationPath) return false // We cannot prune this relation if the path cannot be extracted from the relation
     // Secondly evaluate if we can prune the relation based on the extracted path and relation type and value
-    return canPruneRelationForQuery(query, relationPath, relation)
+    relation.processedPath = relationPath
+    return canPruneRelationForQuery(query, relation)
   } catch (e) {
-    // console.error(e)
+    console.error(e)
     return false
   }
 }
 
-export function canPruneRelationForQuery (query: string, relationPath : Path, relation: Relation) : boolean {
+export function canPruneRelationForQuery (query: string, relation: Relation) : boolean {
   // TODO:: Refactor this to incorporate value ranges for relations pointing to same node for completer result.
 
-  const patterns = processPatterns(query, relationPath, relation)
+  // If no path is present, we cannot use the relation, as it does not lead us anywhere
+  if (!relation['tree:path']) return true
+
+  // In case no relation value is given, we cannot prune the relation
+  if (!relation['tree:value']) return false
+  return matchRelationValueWithPathMatchingValueRanges(query, relation)
+}
+
+function matchRelationValueWithPathMatchingValueRanges (query: string, relation: Relation): boolean {
+  let patterns
+  try { patterns = processPatterns(query, relation) } catch (error) { console.log(error); throw new Error('Query could not be parsed correctly') }
   if (!patterns || patterns.length === 0) return false
 
-  let bgpMatches : N3.Term[] = []
-  let variableMatches : VariableBinding[] = []
+  let bgpMatches: N3.Term[] = []
+  let variableMatches: VariableBinding[] = []
 
   for (const pattern of patterns) {
     if (pattern.type === 'bgp') {
@@ -77,7 +90,6 @@ export function canPruneRelationForQuery (query: string, relationPath : Path, re
       }
     }
   }
-
   return canPruneRelationForValueRanges(resultingValueRanges, relation)
 }
 
@@ -89,31 +101,34 @@ export function canPruneRelationForQuery (query: string, relationPath : Path, re
  * returns FALSE if relation DOES NOT CONTAIN USEFUL INFORMATION
  */
 function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], relation : Relation) {
+  // console.log('canPruneRelationForValueRanges', resultingValueRanges, relation)
   for (const valueRange of resultingValueRanges) {
     if (!isValidValueRange(valueRange)) throw new Error('incorrect value range: ' + valueRange.toString()) // Cannot reason over these relations so cant prune
     let treeValue
     if (valueRange instanceof StringValueRange) {
-      treeValue = relation['tree:value'].toString()
+      treeValue = relation['tree:value'].value.toString()
     } else if (valueRange instanceof NumberValueRange) {
+      if (relation['tree:value'].datatype.value in [NameSpaces.XSD + 'decimal', NameSpaces.XSD + 'integer', NameSpaces.XSD + 'float', NameSpaces.XSD + 'double']) return false
       switch (valueRange.dataType) {
         case DataType.DECIMAL:
-          treeValue = parseInt(relation['tree:value'])
+          treeValue = parseInt(relation['tree:value'].value)
           break
         case DataType.INTEGER:
-          treeValue = parseInt(relation['tree:value'])
+          treeValue = parseInt(relation['tree:value'].value)
           break
         case DataType.FLOAT:
-          treeValue = parseFloat(relation['tree:value'])
+          treeValue = parseFloat(relation['tree:value'].value)
           break
         case DataType.DOUBLE:
-          treeValue = parseFloat(relation['tree:value'])
+          treeValue = parseFloat(relation['tree:value'].value)
           break
         default:
-          treeValue = parseFloat(relation['tree:value'])
+          treeValue = parseFloat(relation['tree:value'].value)
           break
       }
     } else if (valueRange instanceof DateTimeValueRange) {
-      treeValue = new Date(relation['tree:value'])
+      if (relation['tree:value'].datatype.value !== NameSpaces.XSD + 'dateTime') return false
+      treeValue = new Date(relation['tree:value'].value)
     }
     if (!treeValue) {
       throw new Error('Could not convert relation type to evaluated query value range data type')
@@ -125,9 +140,15 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
     switch (relation['@type']) {
       case tree + 'PrefixRelation':
         if (valueRange instanceof StringValueRange) {
-          const nextSmallestPrefix = getNextNonPrefixString(treeValue)
+          const nextSmallestPrefix = getNextNonPrefixString(treeValue as string)
           startComparison = !valueRange.start || !nextSmallestPrefix || valueRange.start.localeCompare(nextSmallestPrefix) < 0
-          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue) >= 0
+          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue as string) >= 0
+        } else if (checkLiteral(valueRange as UnknownValueRange)) {
+          const unknownvalueRange = valueRange as UnknownValueRange
+          treeValue = relation['tree:value'].value.toString()
+          const nextSmallestPrefix = getNextNonPrefixString(treeValue as string)
+          startComparison = !unknownvalueRange.start || !nextSmallestPrefix || unknownvalueRange.start.toString().localeCompare(nextSmallestPrefix) < 0
+          endComparison = !unknownvalueRange.end || unknownvalueRange.end.toString().localeCompare(treeValue as string) >= 0
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -136,11 +157,11 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'LessThanRelation':
         if (valueRange instanceof StringValueRange) {
-          startComparison = !valueRange.start || valueRange.start.localeCompare(treeValue) < 0
+          startComparison = !valueRange.start || valueRange.start.localeCompare(treeValue as string) < 0
         } else if (valueRange instanceof NumberValueRange) {
           startComparison = !valueRange.start || valueRange.start < treeValue
         } else if (valueRange instanceof DateTimeValueRange) {
-          startComparison = !valueRange.start || valueRange.start.getTime() < treeValue.getTime()
+          startComparison = !valueRange.start || valueRange.start.getTime() < (treeValue as Date).getTime()
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -149,11 +170,11 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'LessOrEqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue) <= 0 : valueRange.start.localeCompare(treeValue) < 0)
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue as string) <= 0 : valueRange.start.localeCompare(treeValue as string) < 0)
         } else if (valueRange instanceof NumberValueRange) {
           startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= treeValue : valueRange.start < treeValue)
         } else if (valueRange instanceof DateTimeValueRange) {
-          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= treeValue.getTime() : valueRange.start.getTime() < treeValue.getTime())
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= (treeValue as Date).getTime() : valueRange.start.getTime() < (treeValue as Date).getTime())
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -162,11 +183,11 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'GreaterThanRelation':
         if (valueRange instanceof StringValueRange) {
-          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue) > 0
+          endComparison = !valueRange.end || valueRange.end.localeCompare(treeValue as string) > 0
         } else if (valueRange instanceof NumberValueRange) {
           endComparison = !valueRange.end || valueRange.end > treeValue
         } else if (valueRange instanceof DateTimeValueRange) {
-          endComparison = !valueRange.end || valueRange.end.getTime() > treeValue.getTime()
+          endComparison = !valueRange.end || valueRange.end.getTime() > (treeValue as Date).getTime()
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -175,11 +196,11 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'GreaterOrEqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue) >= 0 : valueRange.end.localeCompare(treeValue) > 0)
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue as string) >= 0 : valueRange.end.localeCompare(treeValue as string) > 0)
         } else if (valueRange instanceof NumberValueRange) {
           endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= treeValue : valueRange.end > treeValue)
         } else if (valueRange instanceof DateTimeValueRange) {
-          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= treeValue.getTime() : valueRange.end.getTime() > treeValue.getTime())
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= (treeValue as Date).getTime() : valueRange.end.getTime() > (treeValue as Date).getTime())
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -188,14 +209,14 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
 
       case tree + 'EqualThanRelation':
         if (valueRange instanceof StringValueRange) {
-          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue) <= 0 : valueRange.start.localeCompare(treeValue) < 0)
-          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue) >= 0 : valueRange.end.localeCompare(treeValue) > 0)
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.localeCompare(treeValue as string) <= 0 : valueRange.start.localeCompare(treeValue as string) < 0)
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.localeCompare(treeValue as string) >= 0 : valueRange.end.localeCompare(treeValue as string) > 0)
         } else if (valueRange instanceof NumberValueRange) {
           startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start <= treeValue : valueRange.start < treeValue)
           endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end >= treeValue : valueRange.end > treeValue)
         } else if (valueRange instanceof DateTimeValueRange) {
-          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= treeValue.getTime() : valueRange.start.getTime() < treeValue.getTime())
-          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= treeValue.getTime() : valueRange.end.getTime() > treeValue.getTime())
+          startComparison = !valueRange.start || (valueRange.startInclusive ? valueRange.start.getTime() <= (treeValue as Date).getTime() : valueRange.start.getTime() < (treeValue as Date).getTime())
+          endComparison = !valueRange.end || (valueRange.endInclusive ? valueRange.end.getTime() >= (treeValue as Date).getTime() : valueRange.end.getTime() > (treeValue as Date).getTime())
         } else {
           throw new Error('Evaluated value range type : ' + valueRange.dataType + ' cannot be used to prune relation type: ' + relation['@type'])
         }
@@ -210,36 +231,73 @@ function canPruneRelationForValueRanges (resultingValueRanges : ValueRange[], re
   return false
 }
 
-export function processPatterns (query: string, relationPath : Path, relation: Relation) {
-  // translate the string query into json format\
-  const sparqlJSON = new SPARQLJS.Parser().parse(query)
-  const jsonquery = sparqlJSON as SPARQLJS.Query
+export function processPatterns (query: string, relation: Relation) {
+  const jsonquery = parseQuery(query)
+  switch (jsonquery.queryType) {
+    case 'SELECT':
+      return evaluateSelectQuery(jsonquery, relation)
+    case 'CONSTRUCT':
+      return evaluateConstructQuery(jsonquery, relation)
+    case 'ASK':
+      return evaluateAskQuery(jsonquery, relation)
+    case 'DESCRIBE':
+      return evaluateDesciribeQuery(jsonquery, relation)
+  }
+}
 
-  // We currently only support pruning for select queries with a where clause
-  if (jsonquery.queryType !== 'SELECT' && jsonquery.queryType !== 'CONSTRUCT') { return [] }
-  if (!jsonquery.where) return []
-
+function evaluateQueryWhereBGP (query : SPARQLJS.Query, relation: Relation) {
   const evaluatedPatterns : ProcessedPattern[] = []
-  for (const pattern of jsonquery.where) {
-    const evaluatedPattern = evaluatePattern(pattern, relationPath)
+  if (!query.where) return []
+  for (const pattern of query.where) {
+    const evaluatedPattern = evaluatePattern(pattern, relation.processedPath)
     if (evaluatedPattern) evaluatedPatterns.push(evaluatedPattern)
   }
   return evaluatedPatterns
 }
 
-function evaluatePattern (pattern : SPARQLJS.Pattern, relationPath : Path) : ProcessedPattern | undefined {
+function evaluateSelectQuery (query : SPARQLJS.SelectQuery, relation: Relation) {
+  if (relation['tree:path'] && !relation.processedPath) throw new Error('Relation path could not be processed succesfully: ' + relation['tree:path'].toString())
+  return evaluateQueryWhereBGP(query, relation)
+}
+
+function evaluateConstructQuery (query : SPARQLJS.ConstructQuery, relation: Relation) {
+  if (relation['tree:path'] && !relation.processedPath) throw new Error('Relation path could not be processed succesfully: ' + relation['tree:path'].toString())
+  return evaluateQueryWhereBGP(query, relation)
+}
+
+function evaluateAskQuery (query : SPARQLJS.AskQuery, relation: Relation) {
+  if (relation['tree:path'] && !relation.processedPath) throw new Error('Relation path could not be processed succesfully: ' + relation['tree:path'].toString())
+  return evaluateQueryWhereBGP(query, relation)
+}
+
+function evaluateDesciribeQuery (query : SPARQLJS.DescribeQuery, relation: Relation) {
+  if (relation['tree:path'] && !relation.processedPath) throw new Error('Relation path could not be processed succesfully: ' + relation['tree:path'].toString())
+  return evaluateQueryWhereBGP(query, relation)
+}
+
+/**
+ * This function evaluates SPARQL patterns
+ * For a BGP, it returns the value ranges or variables that match the relation path
+ * In case no relation path is present, it return all present value ranges and variables.\
+ * For a Filter pattern, the function returns all present value ranges and the variable they are bound to.
+ * @param pattern
+ * @param relationPath
+ */
+function evaluatePattern (pattern : SPARQLJS.Pattern, relationPath : Path | undefined) : ProcessedPattern | undefined {
   switch (pattern.type) {
     case 'bgp':
-      // For all path matches (alternative paths with three possibilities are seen as three matches) is checked if all the query paths are used.
-      // If this is not the case, there is a path in the query that was not set in the shacl path of the relation, meaning the matched paths are incorrect / incomplete
-      var BGPPaths = BGPEvaluator.extractBGPPaths(pattern.triples as unknown as N3.Quad[])[1]
-      // Now that all invidual paths have been extracted, we combine them to match the relation path
-      var foundBGPMatches = BGPEvaluator.matchBGP(BGPPaths, relationPath)
-      if (!foundBGPMatches || !foundBGPMatches.length) { throw new Error('No complete matching path was found for the given query') }
-      // Now we check if the found path allows the relation to be pruned
-      var matchedBGP = BGPEvaluator.checkFullBGPMatch(foundBGPMatches, BGPPaths)
-      if (!matchedBGP || (matchedBGP.matches && !matchedBGP.matches.length)) { throw new Error('No complete matching path was found for the given query') }
-      return matchedBGP
+      if (relationPath) {
+        const paths = BGPEvaluator.extractPathsFromBGP(pattern.triples as unknown as N3.Quad[])
+        // Now that all invidual paths have been extracted, we combine them to match the relation path
+        const foundBGPMatches = BGPEvaluator.matchBGP(paths, relationPath) || []
+        if (!foundBGPMatches /* || !foundBGPMatches.length */) { throw new Error(MATCHERRORSTRING) }
+        // Now we check if the found path allows the relation to be pruned
+        var matchedBGP = BGPEvaluator.checkBGPMatch(foundBGPMatches)
+        if (!matchedBGP /* || (matchedBGP.matches && !matchedBGP.matches.length) */) { throw new Error(MATCHERRORSTRING) }
+        return matchedBGP
+      } else {
+        return { type: 'bgp', bindings: BGPEvaluator.extractVariableBindingsFromBGP(pattern.triples as unknown as N3.Quad[]) }
+      }
 
     case 'filter':
 
@@ -248,4 +306,10 @@ function evaluatePattern (pattern : SPARQLJS.Pattern, relationPath : Path) : Pro
     default:
       break
   }
+}
+
+function parseQuery (query: string) : SPARQLJS.Query {
+  const jsonquery = new SPARQLJS.Parser().parse(query)
+  if (jsonquery.type === 'update') throw new Error('Tree relations cannot be processed for update queries')
+  return jsonquery
 }
